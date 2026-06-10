@@ -105,7 +105,7 @@ function Index() {
   // Synthetic progress when no src
   useEffect(() => {
     if (!playing || !current || current.src) return;
-    const dur = current.duration ?? 200;
+    const dur = display.duration ?? 200;
     setDuration(dur);
     const interval = window.setInterval(() => {
       setProgress((p) => {
@@ -178,7 +178,7 @@ function Index() {
     if (!current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const t = ratio * (duration || current.duration || 200);
+    const t = ratio * (duration || display.duration || 200);
     setProgress(t);
     if (audioRef.current) audioRef.current.currentTime = t;
     if (videoRef.current) videoRef.current.currentTime = t;
@@ -206,7 +206,7 @@ function Index() {
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
   ];
 
-  const progressPct = duration ? (progress / duration) * 100 : (progress / (current.duration || 200)) * 100;
+  const progressPct = duration ? (progress / duration) * 100 : (progress / (display.duration || 200)) * 100;
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden">
@@ -215,7 +215,7 @@ function Index() {
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-40 transition-all duration-1000"
         style={{
-          backgroundImage: `url(${current.cover})`,
+          backgroundImage: `url(${display.cover})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           filter: "blur(120px) saturate(1.4)",
@@ -323,13 +323,13 @@ function Index() {
           <div className="relative mb-10 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-card via-card to-background p-6 md:p-8">
             <div
               className="absolute inset-0 opacity-30"
-              style={{ backgroundImage: `url(${current.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }}
+              style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }}
               aria-hidden
             />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
               <div className="relative">
-                <img src={current.cover} alt={current.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                <img src={display.cover} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
                 {playing && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
               </div>
               <div className="flex-1">
@@ -337,9 +337,9 @@ function Index() {
                   <span className={`inline-block h-1.5 w-1.5 rounded-full bg-[var(--aurora-2)] ${playing ? "animate-pulse" : ""}`} />
                   NOW PLAYING
                 </div>
-                <h1 className="font-display text-4xl leading-none md:text-6xl">{current.song}</h1>
+                <h1 className="font-display text-4xl leading-none md:text-6xl">{display.song}</h1>
                 <p className="mt-2 text-sm text-muted-foreground md:text-base">
-                  {current.artist} <span className="text-foreground/30">·</span> {current.album}
+                  {display.artist} <span className="text-foreground/30">·</span> {display.album}
                 </p>
                 <div className="mt-4 flex items-center gap-3">
                   <button
@@ -350,10 +350,10 @@ function Index() {
                     {playing ? "Pause" : "Play"}
                   </button>
                   <button
-                    onClick={() => toggleLike(current.id)}
+                    onClick={() => toggleLike((current?.id ?? ""))}
                     className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40"
                   >
-                    <Heart className={`h-4 w-4 ${current.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
+                    <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
                   </button>
                 </div>
               </div>
@@ -441,13 +441,13 @@ function Index() {
         <footer className="relative z-20 grid h-24 shrink-0 grid-cols-[1fr_auto] items-center gap-4 border-t border-border bg-panel/90 px-4 backdrop-blur-xl md:h-28 md:grid-cols-[1fr_auto_1fr] md:px-6">
           {/* Now playing */}
           <div className="flex items-center gap-3 overflow-hidden">
-            <img src={current.cover} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-border md:h-16 md:w-16" />
+            <img src={display.cover} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-border md:h-16 md:w-16" />
             <div className="min-w-0 flex-1 overflow-hidden">
-              <div className="truncate text-sm font-bold md:text-base">{current.song}</div>
-              <div className="truncate text-xs text-muted-foreground">{current.artist}</div>
+              <div className="truncate text-sm font-bold md:text-base">{display.song}</div>
+              <div className="truncate text-xs text-muted-foreground">{display.artist}</div>
             </div>
-            <button onClick={() => toggleLike(current.id)} className="hidden p-2 md:block">
-              <Heart className={`h-4 w-4 transition ${current.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground hover:text-foreground"}`} />
+            <button onClick={() => toggleLike((current?.id ?? ""))} className="hidden p-2 md:block">
+              <Heart className={`h-4 w-4 transition ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground hover:text-foreground"}`} />
             </button>
           </div>
 
@@ -479,7 +479,7 @@ function Index() {
                 <div className="bg-aurora absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
                 <div className="absolute -top-1 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
               </div>
-              <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || current.duration || 0)}</span>
+              <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || display.duration || 0)}</span>
             </div>
           </div>
 
@@ -531,7 +531,7 @@ function Index() {
       {/* Audio element + keyframes injection */}
       <audio
         ref={audioRef}
-        src={current.src}
+        src={current?.src}
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())}
