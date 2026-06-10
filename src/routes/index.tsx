@@ -329,9 +329,22 @@ function Index() {
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
               <div className="relative">
-                <img src={display.cover} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                {isVideo && current?.src ? (
+                  <video
+                    ref={videoRef}
+                    src={current.src}
+                    playsInline
+                    onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
+                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                    onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
+                    className="aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]"
+                  />
+                ) : (
+                  <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                )}
                 {playing && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
               </div>
+
               <div className="flex-1">
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[var(--aurora-2)]/10 px-3 py-1 text-[10px] font-bold tracking-[0.2em] text-[var(--aurora-2)]">
                   <span className={`inline-block h-1.5 w-1.5 rounded-full bg-[var(--aurora-2)] ${playing ? "animate-pulse" : ""}`} />
@@ -528,14 +541,15 @@ function Index() {
         </aside>
       )}
 
-      {/* Audio element + keyframes injection */}
+      {/* Audio element (video element lives in the hero when applicable) */}
       <audio
         ref={audioRef}
-        src={current?.src}
+        src={!isVideo ? current?.src : undefined}
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())}
       />
+
       <style>{`
         @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
         @keyframes eq-1 { from { height: 60%; } to { height: 25%; } }
