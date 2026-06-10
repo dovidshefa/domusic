@@ -24,23 +24,13 @@ type Track = {
   album: string;
   cover: string;
   src?: string;
+  kind: "audio" | "video";
   liked?: boolean;
   duration?: number;
   plays?: number;
 };
 
-const seed = (s: string) => `https://picsum.photos/seed/${s}/600/600`;
-
-const initialTracks: Track[] = [
-  { id: "1", song: "Night Drive", artist: "Lunar Pulse", album: "Neon Boulevard", cover: seed("nightdrive"), duration: 214, plays: 1248 },
-  { id: "2", song: "Golden Lights", artist: "Kairo", album: "Skylines", cover: seed("goldenlights"), duration: 198, plays: 932, liked: true },
-  { id: "3", song: "Dream Horizon", artist: "Atlas Echo", album: "Drift", cover: seed("dreamhz"), duration: 247, plays: 2103 },
-  { id: "4", song: "Future Bass", artist: "Vex", album: "Particle", cover: seed("futurebass"), duration: 182, plays: 4421 },
-  { id: "5", song: "Midnight Pulse", artist: "Nova Sound", album: "After Hours", cover: seed("midnight"), duration: 226, plays: 887 },
-  { id: "6", song: "Solar Flare", artist: "Aurion", album: "Helios", cover: seed("solar"), duration: 301, plays: 1554, liked: true },
-  { id: "7", song: "Velvet Sky", artist: "Saint Echo", album: "Twilight Tape", cover: seed("velvet"), duration: 193, plays: 612 },
-  { id: "8", song: "Crystal Run", artist: "Hex Bloom", album: "Glass Garden", cover: seed("crystal"), duration: 234, plays: 3019 },
-];
+const initialTracks: Track[] = [];
 
 type View = "library" | "favorites" | "recent" | "trending";
 
@@ -53,7 +43,7 @@ const fmt = (s: number) => {
 
 function Index() {
   const [tracks, setTracks] = useState<Track[]>(initialTracks);
-  const [currentId, setCurrentId] = useState<string>(initialTracks[0].id);
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("library");
@@ -63,13 +53,25 @@ function Index() {
   const [muted, setMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
-  const [recent, setRecent] = useState<string[]>([initialTracks[0].id]);
+  const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const current = tracks.find((t) => t.id === currentId) ?? tracks[0];
+  const current = tracks.find((t) => t.id === currentId) ?? null;
+  const display: Track = current ?? {
+    id: "_empty",
+    song: "Nothing playing",
+    artist: "Upload a song or music video to start",
+    album: "",
+    cover: "",
+    kind: "audio",
+  };
+  const isVideo = current?.kind === "video";
+
+
 
   const filtered = useMemo(() => {
     let list = tracks;
@@ -83,24 +85,26 @@ function Index() {
     return list;
   }, [tracks, view, recent, query]);
 
-  // Audio element sync
+  // Media element sync
   useEffect(() => {
+
     const a = audioRef.current;
-    if (!a) return;
-    a.volume = muted ? 0 : volume;
+    const v = videoRef.current;
+    if (a) a.volume = muted ? 0 : volume;
+    if (v) v.volume = muted ? 0 : volume;
   }, [volume, muted]);
 
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (playing) a.play().catch(() => setPlaying(false));
-    else a.pause();
-  }, [playing, currentId]);
+    const el = isVideo ? videoRef.current : audioRef.current;
+    if (!el) return;
+    if (playing) el.play().catch(() => setPlaying(false));
+    else el.pause();
+  }, [playing, currentId, isVideo]);
 
-  // Synthetic progress when no audio src
+  // Synthetic progress when no src
   useEffect(() => {
-    if (!playing || current.src) return;
-    const dur = current.duration ?? 200;
+    if (!playing || !current || current.src) return;
+    const dur = display.duration ?? 200;
     setDuration(dur);
     const interval = window.setInterval(() => {
       setProgress((p) => {
@@ -121,10 +125,12 @@ function Index() {
     setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, plays: (t.plays ?? 0) + 1 } : t)));
   };
 
+
   const handleNext = () => {
+    if (tracks.length === 0) return;
     const idx = tracks.findIndex((t) => t.id === currentId);
     let nextId: string;
-    if (shuffle) {
+    if (shuffle && tracks.length > 1) {
       const pool = tracks.filter((t) => t.id !== currentId);
       nextId = pool[Math.floor(Math.random() * pool.length)].id;
     } else {
@@ -133,36 +139,50 @@ function Index() {
     playTrack(nextId);
   };
   const handlePrev = () => {
-    if (progress > 3) { setProgress(0); if (audioRef.current) audioRef.current.currentTime = 0; return; }
+    if (tracks.length === 0) return;
+    if (progress > 3) {
+      setProgress(0);
+      if (audioRef.current) audioRef.current.currentTime = 0;
+      if (videoRef.current) videoRef.current.currentTime = 0;
+      return;
+    }
     const idx = tracks.findIndex((t) => t.id === currentId);
     playTrack(tracks[(idx - 1 + tracks.length) % tracks.length].id);
   };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    const added: Track[] = files.map((f, i) => ({
-      id: `u-${Date.now()}-${i}`,
-      song: f.name.replace(/\.[^.]+$/, ""),
-      artist: "Your Upload",
-      album: "Local Files",
-      cover: seed(f.name),
-      src: URL.createObjectURL(f),
-      plays: 0,
-    }));
+    const added: Track[] = files.map((f, i) => {
+      const kind: "audio" | "video" = f.type.startsWith("video") ? "video" : "audio";
+      return {
+        id: `u-${Date.now()}-${i}`,
+        song: f.name.replace(/\.[^.]+$/, ""),
+        artist: kind === "video" ? "Music Video" : "Your Upload",
+        album: "Local Files",
+        cover: `https://picsum.photos/seed/${encodeURIComponent(f.name)}/600/600`,
+        src: URL.createObjectURL(f),
+        kind,
+        plays: 0,
+      };
+    });
     setTracks((prev) => [...added, ...prev]);
     if (added[0]) playTrack(added[0].id);
+    e.target.value = "";
   };
 
   const toggleLike = (id: string) =>
     setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, liked: !t.liked } : t)));
 
   const onSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const t = ratio * (duration || current.duration || 200);
+    const t = ratio * (duration || display.duration || 200);
     setProgress(t);
     if (audioRef.current) audioRef.current.currentTime = t;
+    if (videoRef.current) videoRef.current.currentTime = t;
   };
+
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -185,7 +205,7 @@ function Index() {
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
   ];
 
-  const progressPct = duration ? (progress / duration) * 100 : (progress / (current.duration || 200)) * 100;
+  const progressPct = duration ? (progress / duration) * 100 : (progress / (display.duration || 200)) * 100;
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden">
@@ -194,7 +214,7 @@ function Index() {
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-40 transition-all duration-1000"
         style={{
-          backgroundImage: `url(${current.cover})`,
+          backgroundImage: `url(${display.cover})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           filter: "blur(120px) saturate(1.4)",
@@ -217,8 +237,9 @@ function Index() {
 
         <label className="bg-aurora shadow-aurora group mb-6 flex cursor-pointer items-center justify-center gap-2 rounded-2xl p-4 font-bold text-primary-foreground transition hover:brightness-110">
           <Upload className="h-4 w-4 transition group-hover:-translate-y-0.5" />
-          <span className="text-sm tracking-wide">UPLOAD MUSIC</span>
-          <input ref={fileRef} type="file" multiple accept="audio/*" className="hidden" onChange={handleUpload} />
+          <span className="text-sm tracking-wide">UPLOAD MUSIC / VIDEO</span>
+          <input ref={fileRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={handleUpload} />
+
         </label>
 
         <div className="mb-2 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">BROWSE</div>
@@ -302,23 +323,36 @@ function Index() {
           <div className="relative mb-10 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-card via-card to-background p-6 md:p-8">
             <div
               className="absolute inset-0 opacity-30"
-              style={{ backgroundImage: `url(${current.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }}
+              style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }}
               aria-hidden
             />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
               <div className="relative">
-                <img src={current.cover} alt={current.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                {isVideo && current?.src ? (
+                  <video
+                    ref={videoRef}
+                    src={current.src}
+                    playsInline
+                    onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
+                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                    onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
+                    className="aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]"
+                  />
+                ) : (
+                  <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                )}
                 {playing && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
               </div>
+
               <div className="flex-1">
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[var(--aurora-2)]/10 px-3 py-1 text-[10px] font-bold tracking-[0.2em] text-[var(--aurora-2)]">
                   <span className={`inline-block h-1.5 w-1.5 rounded-full bg-[var(--aurora-2)] ${playing ? "animate-pulse" : ""}`} />
                   NOW PLAYING
                 </div>
-                <h1 className="font-display text-4xl leading-none md:text-6xl">{current.song}</h1>
+                <h1 className="font-display text-4xl leading-none md:text-6xl">{display.song}</h1>
                 <p className="mt-2 text-sm text-muted-foreground md:text-base">
-                  {current.artist} <span className="text-foreground/30">·</span> {current.album}
+                  {display.artist} <span className="text-foreground/30">·</span> {display.album}
                 </p>
                 <div className="mt-4 flex items-center gap-3">
                   <button
@@ -329,10 +363,10 @@ function Index() {
                     {playing ? "Pause" : "Play"}
                   </button>
                   <button
-                    onClick={() => toggleLike(current.id)}
+                    onClick={() => toggleLike((current?.id ?? ""))}
                     className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40"
                   >
-                    <Heart className={`h-4 w-4 ${current.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
+                    <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
                   </button>
                 </div>
               </div>
@@ -420,13 +454,13 @@ function Index() {
         <footer className="relative z-20 grid h-24 shrink-0 grid-cols-[1fr_auto] items-center gap-4 border-t border-border bg-panel/90 px-4 backdrop-blur-xl md:h-28 md:grid-cols-[1fr_auto_1fr] md:px-6">
           {/* Now playing */}
           <div className="flex items-center gap-3 overflow-hidden">
-            <img src={current.cover} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-border md:h-16 md:w-16" />
+            <img src={display.cover} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-border md:h-16 md:w-16" />
             <div className="min-w-0 flex-1 overflow-hidden">
-              <div className="truncate text-sm font-bold md:text-base">{current.song}</div>
-              <div className="truncate text-xs text-muted-foreground">{current.artist}</div>
+              <div className="truncate text-sm font-bold md:text-base">{display.song}</div>
+              <div className="truncate text-xs text-muted-foreground">{display.artist}</div>
             </div>
-            <button onClick={() => toggleLike(current.id)} className="hidden p-2 md:block">
-              <Heart className={`h-4 w-4 transition ${current.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground hover:text-foreground"}`} />
+            <button onClick={() => toggleLike((current?.id ?? ""))} className="hidden p-2 md:block">
+              <Heart className={`h-4 w-4 transition ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground hover:text-foreground"}`} />
             </button>
           </div>
 
@@ -458,7 +492,7 @@ function Index() {
                 <div className="bg-aurora absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
                 <div className="absolute -top-1 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
               </div>
-              <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || current.duration || 0)}</span>
+              <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || display.duration || 0)}</span>
             </div>
           </div>
 
@@ -507,14 +541,15 @@ function Index() {
         </aside>
       )}
 
-      {/* Audio element + keyframes injection */}
+      {/* Audio element (video element lives in the hero when applicable) */}
       <audio
         ref={audioRef}
-        src={current.src}
+        src={!isVideo ? current?.src : undefined}
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())}
       />
+
       <style>{`
         @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
         @keyframes eq-1 { from { height: 60%; } to { height: 25%; } }
