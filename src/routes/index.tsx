@@ -85,10 +85,9 @@ function Index() {
     return list;
   }, [tracks, view, recent, query]);
 
-  // Audio element sync
-  useEffect(() => {
   // Media element sync
   useEffect(() => {
+
     const a = audioRef.current;
     const v = videoRef.current;
     if (a) a.volume = muted ? 0 : volume;
