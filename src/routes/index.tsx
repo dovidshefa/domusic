@@ -237,8 +237,9 @@ function Index() {
 
         <label className="bg-aurora shadow-aurora group mb-6 flex cursor-pointer items-center justify-center gap-2 rounded-2xl p-4 font-bold text-primary-foreground transition hover:brightness-110">
           <Upload className="h-4 w-4 transition group-hover:-translate-y-0.5" />
-          <span className="text-sm tracking-wide">UPLOAD MUSIC</span>
-          <input ref={fileRef} type="file" multiple accept="audio/*" className="hidden" onChange={handleUpload} />
+          <span className="text-sm tracking-wide">UPLOAD MUSIC / VIDEO</span>
+          <input ref={fileRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={handleUpload} />
+
         </label>
 
         <div className="mb-2 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">BROWSE</div>
