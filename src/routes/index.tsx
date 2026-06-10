@@ -24,23 +24,13 @@ type Track = {
   album: string;
   cover: string;
   src?: string;
+  kind: "audio" | "video";
   liked?: boolean;
   duration?: number;
   plays?: number;
 };
 
-const seed = (s: string) => `https://picsum.photos/seed/${s}/600/600`;
-
-const initialTracks: Track[] = [
-  { id: "1", song: "Night Drive", artist: "Lunar Pulse", album: "Neon Boulevard", cover: seed("nightdrive"), duration: 214, plays: 1248 },
-  { id: "2", song: "Golden Lights", artist: "Kairo", album: "Skylines", cover: seed("goldenlights"), duration: 198, plays: 932, liked: true },
-  { id: "3", song: "Dream Horizon", artist: "Atlas Echo", album: "Drift", cover: seed("dreamhz"), duration: 247, plays: 2103 },
-  { id: "4", song: "Future Bass", artist: "Vex", album: "Particle", cover: seed("futurebass"), duration: 182, plays: 4421 },
-  { id: "5", song: "Midnight Pulse", artist: "Nova Sound", album: "After Hours", cover: seed("midnight"), duration: 226, plays: 887 },
-  { id: "6", song: "Solar Flare", artist: "Aurion", album: "Helios", cover: seed("solar"), duration: 301, plays: 1554, liked: true },
-  { id: "7", song: "Velvet Sky", artist: "Saint Echo", album: "Twilight Tape", cover: seed("velvet"), duration: 193, plays: 612 },
-  { id: "8", song: "Crystal Run", artist: "Hex Bloom", album: "Glass Garden", cover: seed("crystal"), duration: 234, plays: 3019 },
-];
+const initialTracks: Track[] = [];
 
 type View = "library" | "favorites" | "recent" | "trending";
 
@@ -53,7 +43,7 @@ const fmt = (s: number) => {
 
 function Index() {
   const [tracks, setTracks] = useState<Track[]>(initialTracks);
-  const [currentId, setCurrentId] = useState<string>(initialTracks[0].id);
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("library");
@@ -63,13 +53,17 @@ function Index() {
   const [muted, setMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
-  const [recent, setRecent] = useState<string[]>([initialTracks[0].id]);
+  const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const current = tracks.find((t) => t.id === currentId) ?? tracks[0];
+  const current = tracks.find((t) => t.id === currentId) ?? null;
+  const isVideo = current?.kind === "video";
+  const mediaRef = isVideo ? videoRef : audioRef;
+
 
   const filtered = useMemo(() => {
     let list = tracks;
