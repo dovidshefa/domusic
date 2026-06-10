@@ -61,8 +61,16 @@ function Index() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const current = tracks.find((t) => t.id === currentId) ?? null;
+  const display: Track = current ?? {
+    id: "_empty",
+    song: "Nothing playing",
+    artist: "Upload a song or music video to start",
+    album: "",
+    cover: "",
+    kind: "audio",
+  };
   const isVideo = current?.kind === "video";
-  const mediaRef = isVideo ? videoRef : audioRef;
+
 
 
   const filtered = useMemo(() => {
@@ -79,21 +87,24 @@ function Index() {
 
   // Audio element sync
   useEffect(() => {
+  // Media element sync
+  useEffect(() => {
     const a = audioRef.current;
-    if (!a) return;
-    a.volume = muted ? 0 : volume;
+    const v = videoRef.current;
+    if (a) a.volume = muted ? 0 : volume;
+    if (v) v.volume = muted ? 0 : volume;
   }, [volume, muted]);
 
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (playing) a.play().catch(() => setPlaying(false));
-    else a.pause();
-  }, [playing, currentId]);
+    const el = isVideo ? videoRef.current : audioRef.current;
+    if (!el) return;
+    if (playing) el.play().catch(() => setPlaying(false));
+    else el.pause();
+  }, [playing, currentId, isVideo]);
 
-  // Synthetic progress when no audio src
+  // Synthetic progress when no src
   useEffect(() => {
-    if (!playing || current.src) return;
+    if (!playing || !current || current.src) return;
     const dur = current.duration ?? 200;
     setDuration(dur);
     const interval = window.setInterval(() => {
@@ -115,10 +126,12 @@ function Index() {
     setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, plays: (t.plays ?? 0) + 1 } : t)));
   };
 
+
   const handleNext = () => {
+    if (tracks.length === 0) return;
     const idx = tracks.findIndex((t) => t.id === currentId);
     let nextId: string;
-    if (shuffle) {
+    if (shuffle && tracks.length > 1) {
       const pool = tracks.filter((t) => t.id !== currentId);
       nextId = pool[Math.floor(Math.random() * pool.length)].id;
     } else {
@@ -127,36 +140,50 @@ function Index() {
     playTrack(nextId);
   };
   const handlePrev = () => {
-    if (progress > 3) { setProgress(0); if (audioRef.current) audioRef.current.currentTime = 0; return; }
+    if (tracks.length === 0) return;
+    if (progress > 3) {
+      setProgress(0);
+      if (audioRef.current) audioRef.current.currentTime = 0;
+      if (videoRef.current) videoRef.current.currentTime = 0;
+      return;
+    }
     const idx = tracks.findIndex((t) => t.id === currentId);
     playTrack(tracks[(idx - 1 + tracks.length) % tracks.length].id);
   };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    const added: Track[] = files.map((f, i) => ({
-      id: `u-${Date.now()}-${i}`,
-      song: f.name.replace(/\.[^.]+$/, ""),
-      artist: "Your Upload",
-      album: "Local Files",
-      cover: seed(f.name),
-      src: URL.createObjectURL(f),
-      plays: 0,
-    }));
+    const added: Track[] = files.map((f, i) => {
+      const kind: "audio" | "video" = f.type.startsWith("video") ? "video" : "audio";
+      return {
+        id: `u-${Date.now()}-${i}`,
+        song: f.name.replace(/\.[^.]+$/, ""),
+        artist: kind === "video" ? "Music Video" : "Your Upload",
+        album: "Local Files",
+        cover: `https://picsum.photos/seed/${encodeURIComponent(f.name)}/600/600`,
+        src: URL.createObjectURL(f),
+        kind,
+        plays: 0,
+      };
+    });
     setTracks((prev) => [...added, ...prev]);
     if (added[0]) playTrack(added[0].id);
+    e.target.value = "";
   };
 
   const toggleLike = (id: string) =>
     setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, liked: !t.liked } : t)));
 
   const onSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const t = ratio * (duration || current.duration || 200);
     setProgress(t);
     if (audioRef.current) audioRef.current.currentTime = t;
+    if (videoRef.current) videoRef.current.currentTime = t;
   };
+
 
   // Keyboard shortcuts
   useEffect(() => {
