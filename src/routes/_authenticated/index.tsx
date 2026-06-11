@@ -243,7 +243,7 @@ function Index() {
       added.push({
         id: row.id, song: row.song, artist: row.artist, album: row.album,
         cover: row.cover ?? cover, src, storage_path: row.storage_path,
-        kind: row.kind, liked: row.liked, duration: row.duration, plays: row.plays,
+        kind: row.kind as "audio" | "video", liked: row.liked, duration: row.duration, plays: row.plays,
       });
     }
     setTracks((prev) => [...added, ...prev]);
