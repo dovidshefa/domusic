@@ -1,18 +1,17 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
-  Heart, ListMusic, Zap, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
-  Shuffle, Repeat, Volume2, VolumeX, Music2, Sparkles, Radio, Clock, Disc3, X,
-  Trash2, Plus, ListPlus,
+  Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
+  Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
+  Trash2, Plus, ListPlus, LogOut,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
-      { title: "DOVID MUSIC ULTRA — Premium Audio Experience" },
-      { name: "description", content: "A cinematic dark music player with live visualizer, playlists, and full library control." },
-      { property: "og:title", content: "DOVID MUSIC ULTRA" },
-      { property: "og:description", content: "A cinematic dark music player with live visualizer." },
+      { title: "DOVID MUSIC ULTRA — Your Library" },
+      { name: "description", content: "Your personal music & music-video library, synced across devices." },
     ],
   }),
   component: Index,
@@ -24,22 +23,19 @@ type Track = {
   artist: string;
   album: string;
   cover: string;
-  src?: string;
+  src: string;
+  storage_path: string | null;
   kind: "audio" | "video";
-  liked?: boolean;
-  duration?: number;
-  plays?: number;
+  liked: boolean;
+  duration: number | null;
+  plays: number;
 };
 
-type Playlist = {
-  id: string;
-  name: string;
-  trackIds: string[];
-};
-
+type Playlist = { id: string; name: string; trackIds: string[] };
 type View = { type: "library" | "favorites" | "recent" | "trending" } | { type: "playlist"; id: string };
 
-const STORAGE_KEY = "dovid-music-ultra-v2";
+const RECENT_KEY = "dovid-recent-v1";
+const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
   if (!isFinite(s)) return "0:00";
@@ -48,15 +44,9 @@ const fmt = (s: number) => {
   return `${m}:${r.toString().padStart(2, "0")}`;
 };
 
-const fileToDataUrl = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-
 function Index() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<{ id: string; name: string; avatar: string | null; email: string } | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -72,49 +62,82 @@ function Index() {
   const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Load from localStorage
+  // Load user + library
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (Array.isArray(data.tracks)) setTracks(data.tracks);
-        if (Array.isArray(data.playlists)) setPlaylists(data.playlists);
-        if (Array.isArray(data.recent)) setRecent(data.recent);
-      }
-    } catch (e) {
-      console.warn("Failed to load library", e);
-    }
-    setHydrated(true);
+    (async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return;
+      const meta = u.user.user_metadata ?? {};
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url")
+        .eq("id", u.user.id)
+        .maybeSingle();
+      setUser({
+        id: u.user.id,
+        email: u.user.email ?? "",
+        name: profile?.display_name ?? meta.full_name ?? meta.name ?? u.user.email?.split("@")[0] ?? "You",
+        avatar: profile?.avatar_url ?? meta.avatar_url ?? null,
+      });
+
+      const [{ data: tRows }, { data: pRows }, { data: ptRows }] = await Promise.all([
+        supabase.from("tracks").select("*").order("created_at", { ascending: false }),
+        supabase.from("playlists").select("*").order("created_at", { ascending: true }),
+        supabase.from("playlist_tracks").select("playlist_id, track_id, position").order("position", { ascending: true }),
+      ]);
+
+      // resign URLs for any private storage tracks
+      const refreshed = await Promise.all(
+        (tRows ?? []).map(async (t: any) => {
+          let src = t.src as string;
+          if (t.storage_path) {
+            const { data } = await supabase.storage.from("media").createSignedUrl(t.storage_path, SIGNED_URL_TTL);
+            if (data?.signedUrl) src = data.signedUrl;
+          }
+          return {
+            id: t.id, song: t.song, artist: t.artist, album: t.album,
+            cover: t.cover ?? `https://picsum.photos/seed/${encodeURIComponent(t.song)}/600/600`,
+            src, storage_path: t.storage_path, kind: t.kind, liked: t.liked,
+            duration: t.duration, plays: t.plays,
+          } as Track;
+        })
+      );
+      setTracks(refreshed);
+
+      const ptByPlaylist = new Map<string, string[]>();
+      (ptRows ?? []).forEach((r: any) => {
+        const arr = ptByPlaylist.get(r.playlist_id) ?? [];
+        arr.push(r.track_id);
+        ptByPlaylist.set(r.playlist_id, arr);
+      });
+      setPlaylists((pRows ?? []).map((p: any) => ({ id: p.id, name: p.name, trackIds: ptByPlaylist.get(p.id) ?? [] })));
+
+      try {
+        const r = localStorage.getItem(RECENT_KEY);
+        if (r) setRecent(JSON.parse(r));
+      } catch {}
+      setLoading(false);
+    })();
   }, []);
 
-  // Save to localStorage
   useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tracks, playlists, recent }));
-    } catch (e) {
-      console.warn("Library too large for browser storage — recent uploads may not persist", e);
-    }
-  }, [tracks, playlists, recent, hydrated]);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch {}
+  }, [recent]);
 
   const current = tracks.find((t) => t.id === currentId) ?? null;
-  const display: Track = current ?? {
-    id: "_empty",
-    song: "Nothing playing",
-    artist: "Upload a song or music video to start",
-    album: "",
-    cover: "",
-    kind: "audio",
+  const display = current ?? {
+    id: "_empty", song: "Nothing playing", artist: "Upload a song or music video to start",
+    album: "", cover: "", src: "", storage_path: null, kind: "audio" as const, liked: false,
+    duration: null, plays: 0,
   };
   const isVideo = current?.kind === "video";
-
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
 
   const filtered = useMemo(() => {
@@ -133,10 +156,8 @@ function Index() {
   }, [tracks, view, recent, query, activePlaylist]);
 
   useEffect(() => {
-    const a = audioRef.current;
-    const v = videoRef.current;
-    if (a) a.volume = muted ? 0 : volume;
-    if (v) v.volume = muted ? 0 : volume;
+    if (audioRef.current) audioRef.current.volume = muted ? 0 : volume;
+    if (videoRef.current) videoRef.current.volume = muted ? 0 : volume;
   }, [volume, muted]);
 
   useEffect(() => {
@@ -146,39 +167,22 @@ function Index() {
     else el.pause();
   }, [playing, currentId, isVideo]);
 
-  useEffect(() => {
-    if (!playing || !current || current.src) return;
-    const dur = display.duration ?? 200;
-    setDuration(dur);
-    const interval = window.setInterval(() => {
-      setProgress((p) => {
-        const n = p + 1;
-        if (n >= dur) { handleNext(); return 0; }
-        return n;
-      });
-    }, 1000);
-    return () => window.clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, currentId]);
-
-  const playTrack = (id: string) => {
+  const playTrack = useCallback((id: string) => {
     setCurrentId(id);
     setPlaying(true);
     setProgress(0);
     setRecent((r) => [id, ...r.filter((x) => x !== id)].slice(0, 12));
     setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, plays: (t.plays ?? 0) + 1 } : t)));
-  };
+    supabase.rpc; // placeholder noop
+    supabase.from("tracks").update({ plays: (tracks.find(t => t.id === id)?.plays ?? 0) + 1 }).eq("id", id).then(() => {});
+  }, [tracks]);
 
   const handleNext = () => {
     if (tracks.length === 0) return;
     const idx = tracks.findIndex((t) => t.id === currentId);
-    let nextId: string;
-    if (shuffle && tracks.length > 1) {
-      const pool = tracks.filter((t) => t.id !== currentId);
-      nextId = pool[Math.floor(Math.random() * pool.length)].id;
-    } else {
-      nextId = tracks[(idx + 1) % tracks.length].id;
-    }
+    const nextId = shuffle && tracks.length > 1
+      ? tracks.filter((t) => t.id !== currentId)[Math.floor(Math.random() * (tracks.length - 1))].id
+      : tracks[(idx + 1) % tracks.length].id;
     playTrack(nextId);
   };
   const handlePrev = () => {
@@ -194,82 +198,119 @@ function Index() {
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return;
     const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    setUploading(true);
+
     const added: Track[] = [];
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const kind: "audio" | "video" = f.type.startsWith("video") ? "video" : "audio";
-      try {
-        const src = await fileToDataUrl(f);
-        added.push({
-          id: `u-${Date.now()}-${i}`,
-          song: f.name.replace(/\.[^.]+$/, ""),
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? (kind === "video" ? "mp4" : "mp3");
+      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: upErr } = await supabase.storage.from("media").upload(path, f, {
+        cacheControl: "3600", upsert: false, contentType: f.type || undefined,
+      });
+      if (upErr) {
+        console.error("upload failed", upErr);
+        continue;
+      }
+      const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
+      const src = signed?.signedUrl ?? "";
+
+      const cover = `https://picsum.photos/seed/${encodeURIComponent(f.name)}/600/600`;
+      const song = f.name.replace(/\.[^.]+$/, "");
+      const { data: row, error: insErr } = await supabase
+        .from("tracks")
+        .insert({
+          user_id: user.id,
+          song,
           artist: kind === "video" ? "Music Video" : "Your Upload",
           album: "Local Files",
-          cover: `https://picsum.photos/seed/${encodeURIComponent(f.name)}/600/600`,
+          cover,
           src,
+          storage_path: path,
           kind,
-          plays: 0,
-        });
-      } catch (err) {
-        console.warn("Could not read file", f.name, err);
+        })
+        .select()
+        .single();
+      if (insErr || !row) {
+        console.error("insert failed", insErr);
+        continue;
       }
+      added.push({
+        id: row.id, song: row.song, artist: row.artist, album: row.album,
+        cover: row.cover ?? cover, src, storage_path: row.storage_path,
+        kind: row.kind as "audio" | "video", liked: row.liked, duration: row.duration, plays: row.plays,
+      });
     }
     setTracks((prev) => [...added, ...prev]);
     if (added[0]) playTrack(added[0].id);
+    setUploading(false);
     e.target.value = "";
   };
 
-  const toggleLike = (id: string) =>
-    setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, liked: !t.liked } : t)));
-
-  const deleteTrack = (id: string) => {
-    if (!confirm("Delete this track from your library?")) return;
-    setTracks((ts) => ts.filter((t) => t.id !== id));
-    setPlaylists((pls) => pls.map((p) => ({ ...p, trackIds: p.trackIds.filter((x) => x !== id) })));
-    setRecent((r) => r.filter((x) => x !== id));
-    if (currentId === id) {
-      setCurrentId(null);
-      setPlaying(false);
-    }
+  const toggleLike = async (id: string) => {
+    const t = tracks.find((x) => x.id === id);
+    if (!t) return;
+    const nv = !t.liked;
+    setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, liked: nv } : x)));
+    await supabase.from("tracks").update({ liked: nv }).eq("id", id);
   };
 
-  const createPlaylist = () => {
+  const deleteTrack = async (id: string) => {
+    if (!confirm("Delete this track from your library?")) return;
+    const t = tracks.find((x) => x.id === id);
+    setTracks((ts) => ts.filter((x) => x.id !== id));
+    setPlaylists((pls) => pls.map((p) => ({ ...p, trackIds: p.trackIds.filter((x) => x !== id) })));
+    setRecent((r) => r.filter((x) => x !== id));
+    if (currentId === id) { setCurrentId(null); setPlaying(false); }
+    await supabase.from("tracks").delete().eq("id", id);
+    if (t?.storage_path) await supabase.storage.from("media").remove([t.storage_path]);
+  };
+
+  const createPlaylist = async () => {
+    if (!user) return;
     const name = prompt("Name your playlist");
     if (!name?.trim()) return;
-    const pl: Playlist = { id: `pl-${Date.now()}`, name: name.trim(), trackIds: [] };
+    const { data, error } = await supabase
+      .from("playlists")
+      .insert({ user_id: user.id, name: name.trim() })
+      .select()
+      .single();
+    if (error || !data) return;
+    const pl: Playlist = { id: data.id, name: data.name, trackIds: [] };
     setPlaylists((p) => [...p, pl]);
     setView({ type: "playlist", id: pl.id });
   };
 
-  const deletePlaylist = (id: string) => {
+  const deletePlaylist = async (id: string) => {
     if (!confirm("Delete this playlist?")) return;
     setPlaylists((p) => p.filter((x) => x.id !== id));
     if (view.type === "playlist" && view.id === id) setView({ type: "library" });
+    await supabase.from("playlists").delete().eq("id", id);
   };
 
-  const addTrackToPlaylist = (playlistId: string, trackId: string) => {
-    setPlaylists((pls) =>
-      pls.map((p) =>
-        p.id === playlistId && !p.trackIds.includes(trackId)
-          ? { ...p, trackIds: [...p.trackIds, trackId] }
-          : p
-      )
-    );
+  const addTrackToPlaylist = async (playlistId: string, trackId: string) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl || pl.trackIds.includes(trackId)) { setAddToMenu(null); return; }
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, trackId] } : p)));
     setAddToMenu(null);
+    await supabase.from("playlist_tracks").insert({ playlist_id: playlistId, track_id: trackId, position: pl.trackIds.length });
   };
 
-  const removeFromPlaylist = (playlistId: string, trackId: string) => {
-    setPlaylists((pls) =>
-      pls.map((p) => (p.id === playlistId ? { ...p, trackIds: p.trackIds.filter((x) => x !== trackId) } : p))
-    );
+  const removeFromPlaylist = async (playlistId: string, trackId: string) => {
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: p.trackIds.filter((x) => x !== trackId) } : p)));
+    await supabase.from("playlist_tracks").delete().eq("playlist_id", playlistId).eq("track_id", trackId);
   };
 
   const onSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const t = ratio * (duration || display.duration || 200);
+    const t = ratio * (duration || 200);
     setProgress(t);
     if (audioRef.current) audioRef.current.currentTime = t;
     if (videoRef.current) videoRef.current.currentTime = t;
@@ -288,6 +329,11 @@ function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId, tracks, shuffle, progress]);
 
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/auth" });
+  };
+
   const navItems: { key: View["type"]; icon: typeof Heart; label: string; count?: number }[] = [
     { key: "library", icon: Music2, label: "Library", count: tracks.length },
     { key: "favorites", icon: Heart, label: "Favorites", count: tracks.filter((t) => t.liked).length },
@@ -295,8 +341,7 @@ function Index() {
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
   ];
 
-  const progressPct = duration ? (progress / duration) * 100 : (progress / (display.duration || 200)) * 100;
-
+  const progressPct = duration ? (progress / duration) * 100 : 0;
   const headerTitle =
     view.type === "library" ? "Your Library" :
     view.type === "favorites" ? "Favorites" :
@@ -306,21 +351,13 @@ function Index() {
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden" onClick={() => setAddToMenu(null)}>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-40 transition-all duration-1000"
-        style={{
-          backgroundImage: `url(${display.cover})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          filter: "blur(120px) saturate(1.4)",
-        }}
-      />
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-40 transition-all duration-1000"
+        style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(120px) saturate(1.4)" }} />
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-background/70" />
 
       {/* Sidebar */}
       <aside className="relative z-10 hidden w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-panel/60 p-5 backdrop-blur-xl md:flex">
-        <div className="mb-8 flex items-center gap-3">
+        <div className="mb-6 flex items-center gap-3">
           <div className="bg-aurora shadow-aurora relative flex h-11 w-11 items-center justify-center rounded-xl">
             <Disc3 className="h-6 w-6 text-primary-foreground" />
             <span className="absolute inset-0 -z-10 animate-pulse-ring rounded-xl bg-[var(--aurora-2)]/40" />
@@ -331,10 +368,29 @@ function Index() {
           </div>
         </div>
 
-        <label className="bg-aurora shadow-aurora group mb-6 flex cursor-pointer items-center justify-center gap-2 rounded-2xl p-4 font-bold text-primary-foreground transition hover:brightness-110">
+        {user && (
+          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-border bg-secondary/40 p-3">
+            {user.avatar ? (
+              <img src={user.avatar} alt={user.name} className="h-9 w-9 rounded-full object-cover ring-1 ring-[var(--aurora-2)]/30" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="bg-aurora flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-primary-foreground">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-bold">{user.name}</div>
+              <div className="truncate text-[10px] text-muted-foreground">{user.email}</div>
+            </div>
+            <button onClick={signOut} title="Sign out" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-[var(--aurora-1)]">
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        <label className={`bg-aurora shadow-aurora group mb-6 flex cursor-pointer items-center justify-center gap-2 rounded-2xl p-4 font-bold text-primary-foreground transition hover:brightness-110 ${uploading ? "opacity-60" : ""}`}>
           <Upload className="h-4 w-4 transition group-hover:-translate-y-0.5" />
-          <span className="text-sm tracking-wide">UPLOAD MUSIC / VIDEO</span>
-          <input ref={fileRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={handleUpload} />
+          <span className="text-sm tracking-wide">{uploading ? "UPLOADING…" : "UPLOAD MUSIC / VIDEO"}</span>
+          <input ref={fileRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
 
         <div className="mb-2 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">BROWSE</div>
@@ -342,21 +398,13 @@ function Index() {
           {navItems.map(({ key, icon: Icon, label, count }) => {
             const active = view.type === key;
             return (
-              <button
-                key={key}
-                onClick={() => setView({ type: key } as View)}
-                className={[
-                  "group flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition-all",
-                  active
-                    ? "bg-gradient-to-r from-[var(--aurora-2)]/15 to-transparent text-[var(--aurora-2)] shadow-[inset_2px_0_0_var(--aurora-2)]"
-                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-                ].join(" ")}
-              >
+              <button key={key} onClick={() => setView({ type: key } as View)}
+                className={["group flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition-all",
+                  active ? "bg-gradient-to-r from-[var(--aurora-2)]/15 to-transparent text-[var(--aurora-2)] shadow-[inset_2px_0_0_var(--aurora-2)]"
+                         : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"].join(" ")}>
                 <Icon className={`h-4 w-4 ${active ? "" : "group-hover:text-[var(--aurora-2)]"}`} />
                 <span className="flex-1">{label}</span>
-                {count != null && (
-                  <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">{count}</span>
-                )}
+                {count != null && <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">{count}</span>}
               </button>
             );
           })}
@@ -378,15 +426,10 @@ function Index() {
             const active = view.type === "playlist" && view.id === p.id;
             return (
               <div key={p.id} className="group flex items-center gap-1">
-                <button
-                  onClick={() => setView({ type: "playlist", id: p.id })}
-                  className={[
-                    "flex flex-1 items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-semibold transition-all",
-                    active
-                      ? "bg-gradient-to-r from-[var(--aurora-2)]/15 to-transparent text-[var(--aurora-2)]"
-                      : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-                  ].join(" ")}
-                >
+                <button onClick={() => setView({ type: "playlist", id: p.id })}
+                  className={["flex flex-1 items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-semibold transition-all",
+                    active ? "bg-gradient-to-r from-[var(--aurora-2)]/15 to-transparent text-[var(--aurora-2)]"
+                           : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"].join(" ")}>
                   <ListMusic className="h-4 w-4" />
                   <span className="flex-1 truncate">{p.name}</span>
                   <span className="text-[10px] text-muted-foreground">{p.trackIds.length}</span>
@@ -414,41 +457,31 @@ function Index() {
         <header className="flex h-20 shrink-0 items-center gap-3 border-b border-border bg-panel/40 px-5 backdrop-blur-xl md:gap-5 md:px-8">
           <div className="relative flex-1 max-w-xl">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search songs, artists, albums…"
-              className="w-full rounded-full border border-border bg-secondary/60 py-3 pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground transition focus:border-[var(--aurora-2)]/50 focus:bg-secondary focus:outline-none focus:ring-4 focus:ring-[var(--aurora-2)]/10"
-            />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search songs, artists, albums…"
+              className="w-full rounded-full border border-border bg-secondary/60 py-3 pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground transition focus:border-[var(--aurora-2)]/50 focus:bg-secondary focus:outline-none focus:ring-4 focus:ring-[var(--aurora-2)]/10" />
           </div>
-          <button
-            onClick={() => setShowQueue((s) => !s)}
-            className="hidden items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2.5 text-xs font-semibold transition hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)] md:flex"
-          >
+          <button onClick={() => setShowQueue((s) => !s)} className="hidden items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2.5 text-xs font-semibold transition hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)] md:flex">
             <ListMusic className="h-4 w-4" /> Queue
           </button>
+          {user && (
+            <button onClick={signOut} className="md:hidden rounded-full border border-border bg-secondary/60 p-2.5" title="Sign out">
+              <LogOut className="h-4 w-4" />
+            </button>
+          )}
         </header>
 
         <section className="flex-1 overflow-y-auto px-5 pb-8 pt-6 md:px-8">
           <div className="relative mb-10 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-card via-card to-background p-6 md:p-8">
-            <div
-              className="absolute inset-0 opacity-30"
-              style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }}
-              aria-hidden
-            />
+            <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
               <div className="relative">
                 {isVideo && current?.src ? (
-                  <video
-                    ref={videoRef}
-                    src={current.src}
-                    playsInline
+                  <video ref={videoRef} src={current.src} playsInline
                     onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                     onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                     onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
-                    className="aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]"
-                  />
+                    className="aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]" />
                 ) : (
                   <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
                 )}
@@ -465,31 +498,24 @@ function Index() {
                   {display.artist} <span className="text-foreground/30">·</span> {display.album}
                 </p>
                 <div className="mt-4 flex items-center gap-3">
-                  <button
-                    onClick={() => setPlaying((p) => !p)}
-                    className="bg-aurora shadow-aurora flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-primary-foreground transition hover:brightness-110"
-                  >
+                  <button onClick={() => setPlaying((p) => !p)} className="bg-aurora shadow-aurora flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-primary-foreground transition hover:brightness-110">
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {playing ? "Pause" : "Play"}
                   </button>
-                  <button
-                    onClick={() => toggleLike((current?.id ?? ""))}
-                    className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40"
-                  >
-                    <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
-                  </button>
+                  {current && (
+                    <button onClick={() => toggleLike(current.id)} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40">
+                      <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="hidden h-24 items-end gap-1 md:flex">
                 {Array.from({ length: 18 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className="bg-aurora w-1.5 rounded-full"
+                  <span key={i} className="bg-aurora w-1.5 rounded-full"
                     style={{
                       height: playing ? `${20 + Math.abs(Math.sin((i + 1) * 1.7) * 60) + Math.random() * 20}%` : "12%",
                       animation: playing ? `eq-${i % 4} ${0.6 + (i % 5) * 0.15}s ease-in-out infinite alternate` : "none",
-                    }}
-                  />
+                    }} />
                 ))}
               </div>
             </div>
@@ -507,94 +533,58 @@ function Index() {
             )}
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
+          ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
-              No tracks here yet.
+              No tracks here yet. Click "Upload Music / Video" to add some.
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
               {filtered.map((t) => {
                 const active = t.id === currentId;
                 return (
-                  <article
-                    key={t.id}
-                    onClick={() => playTrack(t.id)}
-                    className={[
-                      "group relative cursor-pointer overflow-hidden rounded-2xl border bg-gradient-to-b from-card to-background transition duration-300",
+                  <article key={t.id} onClick={() => playTrack(t.id)}
+                    className={["group relative cursor-pointer overflow-hidden rounded-2xl border bg-gradient-to-b from-card to-background transition duration-300",
                       "hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)]",
-                      active ? "border-[var(--aurora-2)]/50 shadow-[0_0_30px_-5px_rgba(168,85,247,0.4)]" : "border-border hover:border-[var(--aurora-2)]/30",
-                    ].join(" ")}
-                  >
+                      active ? "border-[var(--aurora-2)]/50 shadow-[0_0_30px_-5px_rgba(168,85,247,0.4)]" : "border-border hover:border-[var(--aurora-2)]/30"].join(" ")}>
                     <div className="relative aspect-square overflow-hidden">
                       <img src={t.cover} alt={t.song} className="h-full w-full object-cover transition duration-700 group-hover:scale-110" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-transparent" />
                       <div className="absolute right-3 top-3 flex gap-1.5">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleLike(t.id); }}
-                          className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110"
-                          title="Favorite"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); toggleLike(t.id); }} className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110" title="Favorite">
                           <Heart className={`h-3.5 w-3.5 ${t.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-white"}`} />
                         </button>
                         <div className="relative">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setAddToMenu(addToMenu === t.id ? null : t.id); }}
-                            className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110"
-                            title="Add to playlist"
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); setAddToMenu(addToMenu === t.id ? null : t.id); }} className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110" title="Add to playlist">
                             <ListPlus className="h-3.5 w-3.5 text-white" />
                           </button>
                           {addToMenu === t.id && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-10 z-40 w-52 overflow-hidden rounded-xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl"
-                            >
+                            <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-10 z-40 w-52 overflow-hidden rounded-xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
                               <div className="border-b border-border px-3 py-2 text-[10px] font-bold tracking-widest text-muted-foreground">ADD TO PLAYLIST</div>
-                              {playlists.length === 0 && (
-                                <div className="px-3 py-3 text-xs text-muted-foreground">No playlists yet.</div>
-                              )}
+                              {playlists.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No playlists yet.</div>}
                               {playlists.map((p) => (
-                                <button
-                                  key={p.id}
-                                  onClick={() => addTrackToPlaylist(p.id, t.id)}
-                                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-secondary"
-                                  disabled={p.trackIds.includes(t.id)}
-                                >
+                                <button key={p.id} onClick={() => addTrackToPlaylist(p.id, t.id)}
+                                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-secondary" disabled={p.trackIds.includes(t.id)}>
                                   <span className="truncate">{p.name}</span>
                                   {p.trackIds.includes(t.id) && <span className="text-[10px] text-[var(--aurora-2)]">✓</span>}
                                 </button>
                               ))}
-                              <button
-                                onClick={() => { setAddToMenu(null); createPlaylist(); }}
-                                className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs text-[var(--aurora-2)] hover:bg-secondary"
-                              >
+                              <button onClick={() => { setAddToMenu(null); createPlaylist(); }} className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs text-[var(--aurora-2)] hover:bg-secondary">
                                 <Plus className="h-3 w-3" /> New playlist
                               </button>
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (view.type === "playlist") removeFromPlaylist(view.id, t.id);
-                            else deleteTrack(t.id);
-                          }}
+                        <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }}
                           className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-1)]/80"
-                          title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}
-                        >
+                          title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}>
                           <Trash2 className="h-3.5 w-3.5 text-white" />
                         </button>
                       </div>
                       <div className="absolute bottom-3 right-3 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-aurora text-primary-foreground opacity-0 shadow-xl transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
                         {active && playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
                       </div>
-                      {active && playing && (
-                        <div className="absolute bottom-3 left-3 flex h-5 items-end gap-0.5">
-                          {[0, 1, 2, 3].map((i) => (
-                            <span key={i} className="w-0.5 rounded-full bg-[var(--aurora-2)]" style={{ height: `${30 + (i % 2) * 40}%`, animation: `eq-${i} ${0.5 + i * 0.1}s ease-in-out infinite alternate` }} />
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div className="p-4">
                       <div className={`truncate text-sm font-bold ${active ? "text-[var(--aurora-2)]" : ""}`}>{t.song}</div>
@@ -613,14 +603,16 @@ function Index() {
         {/* Player */}
         <footer className="relative z-20 grid h-24 shrink-0 grid-cols-[1fr_auto] items-center gap-4 border-t border-border bg-panel/90 px-4 backdrop-blur-xl md:h-28 md:grid-cols-[1fr_auto_1fr] md:px-6">
           <div className="flex items-center gap-3 overflow-hidden">
-            <img src={display.cover} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-border md:h-16 md:w-16" />
+            <img src={display.cover || "https://picsum.photos/seed/empty/200/200"} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-border md:h-16 md:w-16" />
             <div className="min-w-0 flex-1 overflow-hidden">
               <div className="truncate text-sm font-bold md:text-base">{display.song}</div>
               <div className="truncate text-xs text-muted-foreground">{display.artist}</div>
             </div>
-            <button onClick={() => toggleLike((current?.id ?? ""))} className="hidden p-2 md:block">
-              <Heart className={`h-4 w-4 transition ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground hover:text-foreground"}`} />
-            </button>
+            {current && (
+              <button onClick={() => toggleLike(current.id)} className="hidden p-2 md:block">
+                <Heart className={`h-4 w-4 transition ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground hover:text-foreground"}`} />
+              </button>
+            )}
           </div>
 
           <div className="flex flex-col items-center gap-1.5">
@@ -631,10 +623,7 @@ function Index() {
               <button onClick={handlePrev} className="rounded-full p-2 text-foreground transition hover:scale-110">
                 <SkipBack className="h-5 w-5" />
               </button>
-              <button
-                onClick={() => setPlaying((p) => !p)}
-                className="bg-aurora shadow-aurora flex h-12 w-12 items-center justify-center rounded-full text-primary-foreground transition hover:scale-105 hover:brightness-110 md:h-14 md:w-14"
-              >
+              <button onClick={() => setPlaying((p) => !p)} className="bg-aurora shadow-aurora flex h-12 w-12 items-center justify-center rounded-full text-primary-foreground transition hover:scale-105 hover:brightness-110 md:h-14 md:w-14">
                 {playing ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
               </button>
               <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110">
@@ -650,7 +639,7 @@ function Index() {
                 <div className="bg-aurora absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
                 <div className="absolute -top-1 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
               </div>
-              <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || display.duration || 0)}</span>
+              <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || 0)}</span>
             </div>
           </div>
 
@@ -658,12 +647,9 @@ function Index() {
             <button onClick={() => setMuted((m) => !m)} className="text-muted-foreground hover:text-foreground">
               {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
-            <input
-              type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
+            <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
               onChange={(e) => { setVolume(parseFloat(e.target.value)); setMuted(false); }}
-              className="fader w-28"
-              style={{ ["--val" as string]: `${(muted ? 0 : volume) * 100}%` }}
-            />
+              className="fader w-28" style={{ ["--val" as string]: `${(muted ? 0 : volume) * 100}%` }} />
           </div>
 
           <div onClick={onSeek} className="absolute inset-x-0 bottom-0 h-1 cursor-pointer bg-secondary md:hidden">
@@ -701,13 +687,10 @@ function Index() {
         </aside>
       )}
 
-      <audio
-        ref={audioRef}
-        src={!isVideo ? current?.src : undefined}
+      <audio ref={audioRef} src={!isVideo ? current?.src : undefined}
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())}
-      />
+        onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
 
       <style>{`
         @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
