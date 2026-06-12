@@ -513,7 +513,7 @@ function Index() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, tracks, shuffle, progress, isVideo, duration]);
+  }, [currentId, tracks, shuffle, progress, isVideo, duration, editing]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
