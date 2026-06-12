@@ -367,15 +367,52 @@ function Index() {
     await supabase.from("playlist_tracks").delete().eq("playlist_id", playlistId).eq("track_id", trackId);
   };
 
-  const onSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekToClientX = (clientX: number, rect: DOMRect) => {
     if (!current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const t = ratio * (duration || 200);
     setProgress(t);
     if (audioRef.current) audioRef.current.currentTime = t;
     if (videoRef.current) videoRef.current.currentTime = t;
   };
+  const onSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const rect = el.getBoundingClientRect();
+    seekToClientX(e.clientX, rect);
+    const move = (ev: PointerEvent) => seekToClientX(ev.clientX, rect);
+    const up = (ev: PointerEvent) => {
+      el.releasePointerCapture(e.pointerId);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+
+  // Touch swipe on hero: left/right = prev/next, double-tap left/right = ±10s
+  const touchRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onHeroTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+  const onHeroTouchEnd = (e: React.TouchEvent) => {
+    const start = touchRef.current; if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.t;
+    touchRef.current = null;
+    if (dt > 700) return;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) handleNext(); else handlePrev();
+    } else if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx)) {
+      if (dy < 0) skipBy(10); else skipBy(-10);
+    }
+  };
+
 
   const skipBy = (sec: number) => {
     const el = isVideo ? videoRef.current : audioRef.current;
