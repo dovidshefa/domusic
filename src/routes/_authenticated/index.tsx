@@ -65,10 +65,28 @@ function Index() {
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showEq, setShowEq] = useState(false);
+  const EQ_BANDS = [60, 230, 910, 3600, 14000];
+  const EQ_LABELS = ["60Hz", "230Hz", "910Hz", "3.6k", "14k"];
+  const EQ_PRESETS: Record<string, number[]> = {
+    Flat: [0, 0, 0, 0, 0],
+    "Bass Boost": [8, 5, 1, 0, 0],
+    Vocal: [-2, -1, 4, 5, 2],
+    Treble: [0, 0, 1, 5, 8],
+    Electronic: [6, 2, -2, 3, 6],
+    Acoustic: [4, 3, 1, 2, 3],
+  };
+  const [eqEnabled, setEqEnabled] = useState(false);
+  const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const playerStageRef = useRef<HTMLDivElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const filtersRef = useRef<BiquadFilterNode[]>([]);
+  const sourcesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
 
   // Load user + library
   useEffect(() => {
