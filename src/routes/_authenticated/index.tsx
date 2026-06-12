@@ -662,7 +662,8 @@ function Index() {
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
-              <div ref={playerStageRef} className={`relative ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
+              <div ref={playerStageRef} onTouchStart={onHeroTouchStart} onTouchEnd={onHeroTouchEnd}
+                className={`relative select-none ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
                 {isVideo && current?.src ? (
                   <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                     onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
