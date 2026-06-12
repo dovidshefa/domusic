@@ -33,7 +33,11 @@ type Track = {
 };
 
 type Playlist = { id: string; name: string; trackIds: string[] };
-type View = { type: "library" | "favorites" | "recent" | "trending" } | { type: "playlist"; id: string };
+type View =
+  | { type: "library" | "favorites" | "recent" | "trending" | "artists" }
+  | { type: "playlist"; id: string }
+  | { type: "artist"; name: string };
+type EditingTrack = { id: string; song: string; artist: string; album: string } | null;
 
 const RECENT_KEY = "dovid-recent-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
