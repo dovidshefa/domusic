@@ -4,7 +4,7 @@ import {
   Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
-  Rewind, FastForward,
+  Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
