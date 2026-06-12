@@ -777,6 +777,17 @@ function Index() {
           </div>
 
           <div className="hidden items-center justify-end gap-3 md:flex">
+            <button onClick={() => setShowEq((s) => !s)} className={`transition ${showEq ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`} title="Equalizer">
+              <Sliders className="h-4 w-4" />
+            </button>
+            {current && (
+              <button onClick={downloadCurrent} className="text-muted-foreground hover:text-foreground" title="Download">
+                <Download className="h-4 w-4" />
+              </button>
+            )}
+            <button onClick={toggleFullscreen} className="text-muted-foreground hover:text-foreground" title="Fullscreen (F)">
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
             <button onClick={() => setMuted((m) => !m)} className="text-muted-foreground hover:text-foreground">
               {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
