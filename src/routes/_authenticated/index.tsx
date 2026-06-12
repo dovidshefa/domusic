@@ -518,11 +518,12 @@ function Index() {
     navigate({ to: "/auth" });
   };
 
-  const navItems: { key: View["type"]; icon: typeof Heart; label: string; count?: number }[] = [
+  const navItems: { key: "library" | "favorites" | "recent" | "trending" | "artists"; icon: typeof Heart; label: string; count?: number }[] = [
     { key: "library", icon: Music2, label: "Library", count: tracks.length },
     { key: "favorites", icon: Heart, label: "Favorites", count: tracks.filter((t) => t.liked).length },
     { key: "recent", icon: Clock, label: "Recently Played", count: recent.length },
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
+    { key: "artists", icon: UserIcon, label: "Artists", count: artistGroups.length },
   ];
 
   const progressPct = duration ? (progress / duration) * 100 : 0;
@@ -531,6 +532,8 @@ function Index() {
     view.type === "favorites" ? "Favorites" :
     view.type === "recent" ? "Recently Played" :
     view.type === "trending" ? "Trending Now" :
+    view.type === "artists" ? "Artists" :
+    view.type === "artist" ? view.name :
     activePlaylist?.name ?? "Playlist";
 
   return (
