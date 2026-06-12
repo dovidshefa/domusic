@@ -580,17 +580,29 @@ function Index() {
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
-              <div className="relative">
+              <div ref={playerStageRef} className={`relative ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
                 {isVideo && current?.src ? (
-                  <video ref={videoRef} src={current.src} playsInline
+                  <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                     onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                     onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                     onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
-                    className="aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]" />
+                    className={isFullscreen
+                      ? "h-full w-full object-contain"
+                      : "aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]"} />
                 ) : (
-                  <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                  <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song}
+                    className={isFullscreen
+                      ? "max-h-full max-w-full object-contain"
+                      : `h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
                 )}
-                {playing && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
+                {playing && !isFullscreen && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
+                {current && (
+                  <button onClick={toggleFullscreen}
+                    className="absolute right-2 top-2 rounded-full bg-black/60 p-2 text-white backdrop-blur transition hover:bg-black/80"
+                    title={isFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"}>
+                    {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </button>
+                )}
               </div>
 
               <div className="flex-1">
