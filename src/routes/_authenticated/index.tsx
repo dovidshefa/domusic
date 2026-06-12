@@ -499,7 +499,9 @@ function Index() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === "INPUT") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      if (editing) return;
       if (e.code === "Space") { e.preventDefault(); setPlaying((p) => !p); }
       else if (e.code === "ArrowRight" && e.shiftKey) handleNext();
       else if (e.code === "ArrowLeft" && e.shiftKey) handlePrev();
