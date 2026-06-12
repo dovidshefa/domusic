@@ -148,6 +148,12 @@ function Index() {
       try {
         const r = localStorage.getItem(RECENT_KEY);
         if (r) setRecent(JSON.parse(r));
+        const e = localStorage.getItem(EQ_KEY);
+        if (e) {
+          const parsed = JSON.parse(e);
+          if (Array.isArray(parsed.gains) && parsed.gains.length === 5) setEqGains(parsed.gains);
+          if (typeof parsed.enabled === "boolean") setEqEnabled(parsed.enabled);
+        }
       } catch {}
       setLoading(false);
     })();
@@ -156,6 +162,10 @@ function Index() {
   useEffect(() => {
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch {}
   }, [recent]);
+
+  useEffect(() => {
+    try { localStorage.setItem(EQ_KEY, JSON.stringify({ gains: eqGains, enabled: eqEnabled })); } catch {}
+  }, [eqGains, eqEnabled]);
 
   const current = tracks.find((t) => t.id === currentId) ?? null;
   const display = current ?? {
