@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
-  Trash2, Plus, ListPlus, LogOut,
+  Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
+  Rewind, FastForward,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -64,10 +65,28 @@ function Index() {
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showEq, setShowEq] = useState(false);
+  const EQ_BANDS = [60, 230, 910, 3600, 14000];
+  const EQ_LABELS = ["60Hz", "230Hz", "910Hz", "3.6k", "14k"];
+  const EQ_PRESETS: Record<string, number[]> = {
+    Flat: [0, 0, 0, 0, 0],
+    "Bass Boost": [8, 5, 1, 0, 0],
+    Vocal: [-2, -1, 4, 5, 2],
+    Treble: [0, 0, 1, 5, 8],
+    Electronic: [6, 2, -2, 3, 6],
+    Acoustic: [4, 3, 1, 2, 3],
+  };
+  const [eqEnabled, setEqEnabled] = useState(false);
+  const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const playerStageRef = useRef<HTMLDivElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const filtersRef = useRef<BiquadFilterNode[]>([]);
+  const sourcesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
 
   // Load user + library
   useEffect(() => {
@@ -316,18 +335,104 @@ function Index() {
     if (videoRef.current) videoRef.current.currentTime = t;
   };
 
+  const skipBy = (sec: number) => {
+    const el = isVideo ? videoRef.current : audioRef.current;
+    if (!el) return;
+    const t = Math.max(0, Math.min((duration || el.duration || 0), el.currentTime + sec));
+    el.currentTime = t;
+    setProgress(t);
+  };
+
+  const toggleFullscreen = async () => {
+    const el = playerStageRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) await el.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (err) { console.error(err); }
+  };
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  const downloadCurrent = async () => {
+    if (!current) return;
+    try {
+      let url = current.src;
+      let filename = `${current.song}.${current.kind === "video" ? "mp4" : "mp3"}`;
+      if (current.storage_path) {
+        const { data } = await supabase.storage.from("media").createSignedUrl(
+          current.storage_path, 60 * 10, { download: filename }
+        );
+        if (data?.signedUrl) url = data.signedUrl;
+      }
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { console.error(e); }
+  };
+
+  // ---- Web Audio Equalizer (works for any output device incl. Bluetooth) ----
+  const ensureEqGraph = useCallback((el: HTMLMediaElement | null) => {
+    if (!el) return;
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
+        if (!Ctx) return;
+        audioCtxRef.current = new Ctx();
+        filtersRef.current = EQ_BANDS.map((f, i) => {
+          const filter = audioCtxRef.current!.createBiquadFilter();
+          filter.type = i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
+          filter.frequency.value = f;
+          filter.Q.value = 1.0;
+          filter.gain.value = eqGains[i] ?? 0;
+          return filter;
+        });
+      }
+      const ctx = audioCtxRef.current!;
+      if (ctx.state === "suspended") ctx.resume();
+      if (!sourcesRef.current.has(el)) {
+        const src = ctx.createMediaElementSource(el);
+        sourcesRef.current.set(el, src);
+        // chain: src -> f0 -> f1 ... -> destination
+        let node: AudioNode = src;
+        filtersRef.current.forEach((f) => { node.connect(f); node = f; });
+        node.connect(ctx.destination);
+      }
+    } catch (err) {
+      console.warn("EQ setup failed", err);
+    }
+  }, [eqGains]);
+
+  useEffect(() => {
+    if (!eqEnabled) return;
+    ensureEqGraph(audioRef.current);
+    if (isVideo) ensureEqGraph(videoRef.current);
+  }, [eqEnabled, currentId, isVideo, ensureEqGraph]);
+
+  useEffect(() => {
+    filtersRef.current.forEach((f, i) => {
+      if (f) f.gain.value = eqEnabled ? (eqGains[i] ?? 0) : 0;
+    });
+  }, [eqGains, eqEnabled]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
       if (e.code === "Space") { e.preventDefault(); setPlaying((p) => !p); }
-      else if (e.code === "ArrowRight") handleNext();
-      else if (e.code === "ArrowLeft") handlePrev();
+      else if (e.code === "ArrowRight" && e.shiftKey) handleNext();
+      else if (e.code === "ArrowLeft" && e.shiftKey) handlePrev();
+      else if (e.code === "ArrowRight") skipBy(10);
+      else if (e.code === "ArrowLeft") skipBy(-10);
       else if (e.key === "m") setMuted((m) => !m);
+      else if (e.key === "f") toggleFullscreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, tracks, shuffle, progress]);
+  }, [currentId, tracks, shuffle, progress, isVideo, duration]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -475,17 +580,29 @@ function Index() {
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
-              <div className="relative">
+              <div ref={playerStageRef} className={`relative ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
                 {isVideo && current?.src ? (
-                  <video ref={videoRef} src={current.src} playsInline
+                  <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                     onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                     onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
                     onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
-                    className="aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]" />
+                    className={isFullscreen
+                      ? "h-full w-full object-contain"
+                      : "aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]"} />
                 ) : (
-                  <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song} className={`h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                  <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song}
+                    className={isFullscreen
+                      ? "max-h-full max-w-full object-contain"
+                      : `h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
                 )}
-                {playing && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
+                {playing && !isFullscreen && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
+                {current && (
+                  <button onClick={toggleFullscreen}
+                    className="absolute right-2 top-2 rounded-full bg-black/60 p-2 text-white backdrop-blur transition hover:bg-black/80"
+                    title={isFullscreen ? "Exit fullscreen (F)" : "Fullscreen (F)"}>
+                    {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </button>
+                )}
               </div>
 
               <div className="flex-1">
@@ -503,9 +620,17 @@ function Index() {
                     {playing ? "Pause" : "Play"}
                   </button>
                   {current && (
-                    <button onClick={() => toggleLike(current.id)} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40">
-                      <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
-                    </button>
+                    <>
+                      <button onClick={() => toggleLike(current.id)} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40" title="Favorite">
+                        <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
+                      </button>
+                      <button onClick={downloadCurrent} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40" title="Download">
+                        <Download className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setShowEq((s) => !s)} className={`rounded-full border bg-secondary/60 p-2.5 transition ${showEq ? "border-[var(--aurora-2)] text-[var(--aurora-2)]" : "border-border hover:border-[var(--aurora-2)]/40"}`} title="Equalizer">
+                        <Sliders className="h-4 w-4" />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -620,13 +745,21 @@ function Index() {
               <button onClick={() => setShuffle((s) => !s)} className={`hidden p-2 transition md:block ${shuffle ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
                 <Shuffle className="h-4 w-4" />
               </button>
-              <button onClick={handlePrev} className="rounded-full p-2 text-foreground transition hover:scale-110">
+              <button onClick={handlePrev} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Previous (Shift+←)">
                 <SkipBack className="h-5 w-5" />
+              </button>
+              <button onClick={() => skipBy(-10)} className="relative rounded-full p-2 text-foreground transition hover:scale-110 hover:text-[var(--aurora-2)]" title="Back 10s (←)">
+                <Rewind className="h-5 w-5" />
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] font-bold">10</span>
               </button>
               <button onClick={() => setPlaying((p) => !p)} className="bg-aurora shadow-aurora flex h-12 w-12 items-center justify-center rounded-full text-primary-foreground transition hover:scale-105 hover:brightness-110 md:h-14 md:w-14">
                 {playing ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
               </button>
-              <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110">
+              <button onClick={() => skipBy(10)} className="relative rounded-full p-2 text-foreground transition hover:scale-110 hover:text-[var(--aurora-2)]" title="Forward 10s (→)">
+                <FastForward className="h-5 w-5" />
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] font-bold">10</span>
+              </button>
+              <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Next (Shift+→)">
                 <SkipForward className="h-5 w-5" />
               </button>
               <button onClick={() => setRepeat((r) => !r)} className={`hidden p-2 transition md:block ${repeat ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
@@ -644,6 +777,17 @@ function Index() {
           </div>
 
           <div className="hidden items-center justify-end gap-3 md:flex">
+            <button onClick={() => setShowEq((s) => !s)} className={`transition ${showEq ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`} title="Equalizer">
+              <Sliders className="h-4 w-4" />
+            </button>
+            {current && (
+              <button onClick={downloadCurrent} className="text-muted-foreground hover:text-foreground" title="Download">
+                <Download className="h-4 w-4" />
+              </button>
+            )}
+            <button onClick={toggleFullscreen} className="text-muted-foreground hover:text-foreground" title="Fullscreen (F)">
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
             <button onClick={() => setMuted((m) => !m)} className="text-muted-foreground hover:text-foreground">
               {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
@@ -687,16 +831,69 @@ function Index() {
         </aside>
       )}
 
-      <audio ref={audioRef} src={!isVideo ? current?.src : undefined}
+      <audio ref={audioRef} src={!isVideo ? current?.src : undefined} crossOrigin="anonymous"
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
+
+      {/* Equalizer panel */}
+      {showEq && (
+        <div className="absolute bottom-28 right-4 z-40 w-[340px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-6">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-display text-lg">Equalizer</div>
+              <div className="text-[10px] text-muted-foreground">Applies to all output — speakers, headphones, Bluetooth</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest">
+                <input type="checkbox" checked={eqEnabled} onChange={(e) => setEqEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--aurora-2)]" />
+                On
+              </label>
+              <button onClick={() => setShowEq(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {Object.keys(EQ_PRESETS).map((name) => (
+              <button key={name} onClick={() => { setEqGains(EQ_PRESETS[name]); setEqEnabled(true); }}
+                className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]">
+                {name}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            {EQ_BANDS.map((_, i) => (
+              <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+                <span className="text-[9px] tabular-nums text-muted-foreground">{eqGains[i] > 0 ? "+" : ""}{eqGains[i]}dB</span>
+                <input type="range" min={-12} max={12} step={1} value={eqGains[i]}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value);
+                    setEqGains((g) => g.map((x, idx) => (idx === i ? v : x)));
+                    setEqEnabled(true);
+                  }}
+                  className="eq-slider" />
+                <span className="text-[9px] font-bold text-muted-foreground">{EQ_LABELS[i]}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] leading-snug text-muted-foreground">
+            Tip: Bluetooth & wireless headphones use the OS audio output, so this EQ shapes their sound too. Pair your device from system settings.
+          </p>
+        </div>
+      )}
 
       <style>{`
         @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
         @keyframes eq-1 { from { height: 60%; } to { height: 25%; } }
         @keyframes eq-2 { from { height: 35%; } to { height: 85%; } }
         @keyframes eq-3 { from { height: 75%; } to { height: 30%; } }
+        .eq-slider {
+          writing-mode: vertical-lr;
+          -webkit-appearance: slider-vertical;
+          appearance: slider-vertical;
+          width: 18px;
+          height: 120px;
+          accent-color: var(--aurora-2);
+        }
       `}</style>
     </div>
   );
