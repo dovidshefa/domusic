@@ -629,6 +629,27 @@ function Index() {
           })}
         </div>
 
+        {artistGroups.length > 0 && (
+          <>
+            <div className="mb-2 mt-8 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">ARTISTS</div>
+            <div className="flex flex-col gap-1">
+              {artistGroups.map(([name, count]) => {
+                const active = view.type === "artist" && view.name === name;
+                return (
+                  <button key={name} onClick={() => setView({ type: "artist", name })}
+                    className={["flex items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-semibold transition-all",
+                      active ? "bg-gradient-to-r from-[var(--aurora-1)]/15 to-transparent text-[var(--aurora-1)]"
+                             : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"].join(" ")}>
+                    <UserIcon className="h-4 w-4" />
+                    <span className="flex-1 truncate">{name}</span>
+                    <span className="text-[10px] text-muted-foreground">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         <div className="mt-auto pt-6 text-[10px] leading-relaxed text-muted-foreground">
           <div className="font-semibold tracking-widest text-foreground/70">SHORTCUTS</div>
           <div className="mt-2 grid grid-cols-2 gap-1">
