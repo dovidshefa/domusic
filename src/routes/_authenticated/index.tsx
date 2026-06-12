@@ -847,9 +847,9 @@ function Index() {
             </div>
             <div className="hidden w-full max-w-md items-center gap-3 md:flex">
               <span className="w-10 text-right text-[10px] tabular-nums text-muted-foreground">{fmt(progress)}</span>
-              <div onClick={onSeek} className="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-secondary">
-                <div className="bg-aurora absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
-                <div className="absolute -top-1 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
+              <div onPointerDown={onSeekPointerDown} className="group relative h-2 flex-1 cursor-pointer touch-none rounded-full bg-secondary">
+                <div className="bg-aurora pointer-events-none absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
+                <div className="pointer-events-none absolute -top-1 h-4 w-4 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
               </div>
               <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || 0)}</span>
             </div>
