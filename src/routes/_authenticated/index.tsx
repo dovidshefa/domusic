@@ -83,6 +83,8 @@ function Index() {
   };
   const [eqEnabled, setEqEnabled] = useState(false);
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]);
+  const [editing, setEditing] = useState<EditingTrack>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
