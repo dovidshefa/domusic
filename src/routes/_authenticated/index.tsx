@@ -620,9 +620,17 @@ function Index() {
                     {playing ? "Pause" : "Play"}
                   </button>
                   {current && (
-                    <button onClick={() => toggleLike(current.id)} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40">
-                      <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
-                    </button>
+                    <>
+                      <button onClick={() => toggleLike(current.id)} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40" title="Favorite">
+                        <Heart className={`h-4 w-4 ${display.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : ""}`} />
+                      </button>
+                      <button onClick={downloadCurrent} className="rounded-full border border-border bg-secondary/60 p-2.5 transition hover:border-[var(--aurora-2)]/40" title="Download">
+                        <Download className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setShowEq((s) => !s)} className={`rounded-full border bg-secondary/60 p-2.5 transition ${showEq ? "border-[var(--aurora-2)] text-[var(--aurora-2)]" : "border-border hover:border-[var(--aurora-2)]/40"}`} title="Equalizer">
+                        <Sliders className="h-4 w-4" />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
