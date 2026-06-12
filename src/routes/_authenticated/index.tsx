@@ -975,6 +975,100 @@ function Index() {
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
 
+      {/* Edit track dialog */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm md:items-center" onClick={() => setEditing(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-border p-4">
+              <div className="font-display text-xl">Edit track</div>
+              <button onClick={() => setEditing(null)} className="rounded-full p-1.5 hover:bg-secondary"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-4 p-5">
+              <label className="block">
+                <div className="mb-1 text-[10px] font-bold tracking-widest text-muted-foreground">SONG NAME</div>
+                <input value={editing.song} onChange={(e) => setEditing({ ...editing, song: e.target.value })}
+                  className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
+              </label>
+              <label className="block">
+                <div className="mb-1 flex items-center justify-between text-[10px] font-bold tracking-widest text-muted-foreground">
+                  <span>ARTIST</span>
+                  {artistGroups.length > 0 && <span className="text-[9px] font-normal normal-case tracking-normal text-muted-foreground">Tap a chip to reuse</span>}
+                </div>
+                <input value={editing.artist} onChange={(e) => setEditing({ ...editing, artist: e.target.value })} list="artist-list"
+                  className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
+                <datalist id="artist-list">
+                  {artistGroups.map(([name]) => <option key={name} value={name} />)}
+                </datalist>
+                {artistGroups.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {artistGroups.slice(0, 12).map(([name]) => (
+                      <button key={name} type="button" onClick={() => setEditing({ ...editing, artist: name })}
+                        className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-1)]/40 hover:text-[var(--aurora-1)]">
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </label>
+              <label className="block">
+                <div className="mb-1 text-[10px] font-bold tracking-widest text-muted-foreground">ALBUM</div>
+                <input value={editing.album} onChange={(e) => setEditing({ ...editing, album: e.target.value })}
+                  className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
+              </label>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-secondary/30 p-4">
+              <button onClick={() => setEditing(null)} className="rounded-full border border-border bg-secondary/60 px-4 py-2 text-xs font-semibold hover:bg-secondary">Cancel</button>
+              <button onClick={saveTrackEdits} className="bg-aurora shadow-aurora rounded-full px-5 py-2 text-xs font-bold text-primary-foreground hover:brightness-110">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile control sheet (touch-first controls for shuffle/repeat/EQ/fullscreen/download) */}
+      <button onClick={() => setShowMobileMenu(true)} className="absolute bottom-28 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-panel/90 shadow-xl backdrop-blur-xl md:hidden" title="More">
+        <MoreVertical className="h-5 w-5" />
+      </button>
+      {showMobileMenu && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm md:hidden" onClick={() => setShowMobileMenu(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full rounded-t-3xl border-t border-border bg-panel/95 p-5 pb-8 shadow-2xl backdrop-blur-xl">
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
+            <div className="grid grid-cols-4 gap-3">
+              <button onClick={() => { setShuffle((s) => !s); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${shuffle ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <Shuffle className="h-5 w-5" /><span className="text-[10px] font-semibold">Shuffle</span>
+              </button>
+              <button onClick={() => { setRepeat((r) => !r); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeat ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">Repeat</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); toggleFullscreen(); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Maximize2 className="h-5 w-5" /><span className="text-[10px] font-semibold">Full</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); if (current) downloadCurrent(); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3" disabled={!current}>
+                <Download className="h-5 w-5" /><span className="text-[10px] font-semibold">Download</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setShowQueue(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <ListMusic className="h-5 w-5" /><span className="text-[10px] font-semibold">Queue</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); if (current) setEditing({ id: current.id, song: current.song, artist: current.artist, album: current.album }); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3" disabled={!current}>
+                <Pencil className="h-5 w-5" /><span className="text-[10px] font-semibold">Edit</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setMuted((m) => !m); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}<span className="text-[10px] font-semibold">{muted ? "Unmute" : "Mute"}</span>
+              </button>
+            </div>
+            <div className="mt-4 flex items-center gap-3 px-1">
+              <Volume2 className="h-4 w-4 text-muted-foreground" />
+              <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
+                onChange={(e) => { setVolume(parseFloat(e.target.value)); setMuted(false); }}
+                className="flex-1 accent-[var(--aurora-2)]" />
+            </div>
+            <p className="mt-3 text-center text-[10px] text-muted-foreground">Swipe ← → on the cover to skip tracks · ↑↓ to skip 10s</p>
+          </div>
+        </div>
+      )}
+
       {/* Equalizer panel */}
       {showEq && (
         <div className="absolute bottom-28 right-4 z-40 w-[340px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-6">
