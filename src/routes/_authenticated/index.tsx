@@ -4,7 +4,7 @@ import {
   Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
-  Rewind, FastForward,
+  Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -33,9 +33,14 @@ type Track = {
 };
 
 type Playlist = { id: string; name: string; trackIds: string[] };
-type View = { type: "library" | "favorites" | "recent" | "trending" } | { type: "playlist"; id: string };
+type View =
+  | { type: "library" | "favorites" | "recent" | "trending" | "artists" }
+  | { type: "playlist"; id: string }
+  | { type: "artist"; name: string };
+type EditingTrack = { id: string; song: string; artist: string; album: string } | null;
 
 const RECENT_KEY = "dovid-recent-v1";
+const EQ_KEY = "dovid-eq-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
@@ -79,6 +84,8 @@ function Index() {
   };
   const [eqEnabled, setEqEnabled] = useState(false);
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]);
+  const [editing, setEditing] = useState<EditingTrack>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -141,6 +148,12 @@ function Index() {
       try {
         const r = localStorage.getItem(RECENT_KEY);
         if (r) setRecent(JSON.parse(r));
+        const e = localStorage.getItem(EQ_KEY);
+        if (e) {
+          const parsed = JSON.parse(e);
+          if (Array.isArray(parsed.gains) && parsed.gains.length === 5) setEqGains(parsed.gains);
+          if (typeof parsed.enabled === "boolean") setEqEnabled(parsed.enabled);
+        }
       } catch {}
       setLoading(false);
     })();
@@ -149,6 +162,10 @@ function Index() {
   useEffect(() => {
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch {}
   }, [recent]);
+
+  useEffect(() => {
+    try { localStorage.setItem(EQ_KEY, JSON.stringify({ gains: eqGains, enabled: eqEnabled })); } catch {}
+  }, [eqGains, eqEnabled]);
 
   const current = tracks.find((t) => t.id === currentId) ?? null;
   const display = current ?? {
@@ -159,6 +176,12 @@ function Index() {
   const isVideo = current?.kind === "video";
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
 
+  const artistGroups = useMemo(() => {
+    const map = new Map<string, number>();
+    tracks.forEach((t) => map.set(t.artist || "Unknown", (map.get(t.artist || "Unknown") ?? 0) + 1));
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [tracks]);
+
   const filtered = useMemo(() => {
     let list = tracks;
     if (view.type === "favorites") list = list.filter((t) => t.liked);
@@ -166,6 +189,8 @@ function Index() {
     else if (view.type === "trending") list = [...list].sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0));
     else if (view.type === "playlist" && activePlaylist) {
       list = activePlaylist.trackIds.map((id) => tracks.find((t) => t.id === id)!).filter(Boolean);
+    } else if (view.type === "artist") {
+      list = list.filter((t) => (t.artist || "Unknown") === view.name);
     }
     if (query) {
       const q = query.toLowerCase();
@@ -290,6 +315,23 @@ function Index() {
     if (t?.storage_path) await supabase.storage.from("media").remove([t.storage_path]);
   };
 
+  const saveTrackEdits = async () => {
+    if (!editing) return;
+    const { id, song, artist, album } = editing;
+    const cleanSong = song.trim() || "Untitled";
+    const cleanArtist = artist.trim() || "Unknown";
+    const cleanAlbum = album.trim() || "Local Files";
+    setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, song: cleanSong, artist: cleanArtist, album: cleanAlbum } : x)));
+    setEditing(null);
+    await supabase.from("tracks").update({ song: cleanSong, artist: cleanArtist, album: cleanAlbum }).eq("id", id);
+  };
+
+  const assignTracksToArtist = async (trackIds: string[], artistName: string) => {
+    const name = artistName.trim() || "Unknown";
+    setTracks((ts) => ts.map((x) => (trackIds.includes(x.id) ? { ...x, artist: name } : x)));
+    await supabase.from("tracks").update({ artist: name }).in("id", trackIds);
+  };
+
   const createPlaylist = async () => {
     if (!user) return;
     const name = prompt("Name your playlist");
@@ -325,15 +367,52 @@ function Index() {
     await supabase.from("playlist_tracks").delete().eq("playlist_id", playlistId).eq("track_id", trackId);
   };
 
-  const onSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekToClientX = (clientX: number, rect: DOMRect) => {
     if (!current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const t = ratio * (duration || 200);
     setProgress(t);
     if (audioRef.current) audioRef.current.currentTime = t;
     if (videoRef.current) videoRef.current.currentTime = t;
   };
+  const onSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const rect = el.getBoundingClientRect();
+    seekToClientX(e.clientX, rect);
+    const move = (ev: PointerEvent) => seekToClientX(ev.clientX, rect);
+    const up = (ev: PointerEvent) => {
+      el.releasePointerCapture(e.pointerId);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+
+  // Touch swipe on hero: left/right = prev/next, double-tap left/right = ±10s
+  const touchRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onHeroTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+  const onHeroTouchEnd = (e: React.TouchEvent) => {
+    const start = touchRef.current; if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.t;
+    touchRef.current = null;
+    if (dt > 700) return;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) handleNext(); else handlePrev();
+    } else if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx)) {
+      if (dy < 0) skipBy(10); else skipBy(-10);
+    }
+  };
+
 
   const skipBy = (sec: number) => {
     const el = isVideo ? videoRef.current : audioRef.current;
@@ -420,7 +499,9 @@ function Index() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === "INPUT") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      if (editing) return;
       if (e.code === "Space") { e.preventDefault(); setPlaying((p) => !p); }
       else if (e.code === "ArrowRight" && e.shiftKey) handleNext();
       else if (e.code === "ArrowLeft" && e.shiftKey) handlePrev();
@@ -432,18 +513,19 @@ function Index() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, tracks, shuffle, progress, isVideo, duration]);
+  }, [currentId, tracks, shuffle, progress, isVideo, duration, editing]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
     navigate({ to: "/auth" });
   };
 
-  const navItems: { key: View["type"]; icon: typeof Heart; label: string; count?: number }[] = [
+  const navItems: { key: "library" | "favorites" | "recent" | "trending" | "artists"; icon: typeof Heart; label: string; count?: number }[] = [
     { key: "library", icon: Music2, label: "Library", count: tracks.length },
     { key: "favorites", icon: Heart, label: "Favorites", count: tracks.filter((t) => t.liked).length },
     { key: "recent", icon: Clock, label: "Recently Played", count: recent.length },
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
+    { key: "artists", icon: UserIcon, label: "Artists", count: artistGroups.length },
   ];
 
   const progressPct = duration ? (progress / duration) * 100 : 0;
@@ -452,6 +534,8 @@ function Index() {
     view.type === "favorites" ? "Favorites" :
     view.type === "recent" ? "Recently Played" :
     view.type === "trending" ? "Trending Now" :
+    view.type === "artists" ? "Artists" :
+    view.type === "artist" ? view.name :
     activePlaylist?.name ?? "Playlist";
 
   return (
@@ -547,6 +631,27 @@ function Index() {
           })}
         </div>
 
+        {artistGroups.length > 0 && (
+          <>
+            <div className="mb-2 mt-8 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">ARTISTS</div>
+            <div className="flex flex-col gap-1">
+              {artistGroups.map(([name, count]) => {
+                const active = view.type === "artist" && view.name === name;
+                return (
+                  <button key={name} onClick={() => setView({ type: "artist", name })}
+                    className={["flex items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-semibold transition-all",
+                      active ? "bg-gradient-to-r from-[var(--aurora-1)]/15 to-transparent text-[var(--aurora-1)]"
+                             : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"].join(" ")}>
+                    <UserIcon className="h-4 w-4" />
+                    <span className="flex-1 truncate">{name}</span>
+                    <span className="text-[10px] text-muted-foreground">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         <div className="mt-auto pt-6 text-[10px] leading-relaxed text-muted-foreground">
           <div className="font-semibold tracking-widest text-foreground/70">SHORTCUTS</div>
           <div className="mt-2 grid grid-cols-2 gap-1">
@@ -580,7 +685,8 @@ function Index() {
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
             <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
-              <div ref={playerStageRef} className={`relative ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
+              <div ref={playerStageRef} onTouchStart={onHeroTouchStart} onTouchEnd={onHeroTouchEnd}
+                className={`relative select-none ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
                 {isVideo && current?.src ? (
                   <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                     onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
@@ -660,6 +766,36 @@ function Index() {
 
           {loading ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
+          ) : view.type === "artists" ? (
+            artistGroups.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
+                No artists yet. Upload tracks or assign artists by editing a track.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
+                {artistGroups.map(([name, count]) => {
+                  const sample = tracks.find((t) => (t.artist || "Unknown") === name);
+                  return (
+                    <button key={name} onClick={() => setView({ type: "artist", name })}
+                      className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background text-left transition hover:-translate-y-1.5 hover:border-[var(--aurora-1)]/40 hover:shadow-[0_20px_50px_-15px_rgba(244,114,182,0.35)]">
+                      <div className="relative aspect-square overflow-hidden">
+                        <img src={sample?.cover || "https://picsum.photos/seed/artist/600/600"} alt={name}
+                          className="h-full w-full scale-110 object-cover blur-[1px] brightness-75 transition duration-700 group-hover:scale-125" />
+                        <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 via-black/30 to-transparent p-4">
+                          <div className="bg-aurora -ml-1 mb-1 flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl">
+                            <UserIcon className="h-5 w-5" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <div className="truncate text-base font-bold">{name}</div>
+                        <div className="text-xs text-muted-foreground">{count} track{count !== 1 ? "s" : ""}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
               No tracks here yet. Click "Upload Music / Video" to add some.
@@ -701,6 +837,11 @@ function Index() {
                             </div>
                           )}
                         </div>
+                        <button onClick={(e) => { e.stopPropagation(); setEditing({ id: t.id, song: t.song, artist: t.artist, album: t.album }); }}
+                          className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-2)]/80"
+                          title="Edit info / assign artist">
+                          <Pencil className="h-3.5 w-3.5 text-white" />
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }}
                           className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-1)]/80"
                           title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}>
@@ -768,9 +909,9 @@ function Index() {
             </div>
             <div className="hidden w-full max-w-md items-center gap-3 md:flex">
               <span className="w-10 text-right text-[10px] tabular-nums text-muted-foreground">{fmt(progress)}</span>
-              <div onClick={onSeek} className="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-secondary">
-                <div className="bg-aurora absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
-                <div className="absolute -top-1 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
+              <div onPointerDown={onSeekPointerDown} className="group relative h-2 flex-1 cursor-pointer touch-none rounded-full bg-secondary">
+                <div className="bg-aurora pointer-events-none absolute inset-y-0 left-0 rounded-full transition-[width]" style={{ width: `${progressPct}%` }} />
+                <div className="pointer-events-none absolute -top-1 h-4 w-4 -translate-x-1/2 rounded-full bg-white opacity-0 shadow-lg transition group-hover:opacity-100" style={{ left: `${progressPct}%` }} />
               </div>
               <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{fmt(duration || 0)}</span>
             </div>
@@ -796,8 +937,8 @@ function Index() {
               className="fader w-28" style={{ ["--val" as string]: `${(muted ? 0 : volume) * 100}%` }} />
           </div>
 
-          <div onClick={onSeek} className="absolute inset-x-0 bottom-0 h-1 cursor-pointer bg-secondary md:hidden">
-            <div className="bg-aurora h-full" style={{ width: `${progressPct}%` }} />
+          <div onPointerDown={onSeekPointerDown} className="absolute inset-x-0 bottom-0 h-1.5 cursor-pointer touch-none bg-secondary md:hidden">
+            <div className="bg-aurora pointer-events-none h-full" style={{ width: `${progressPct}%` }} />
           </div>
         </footer>
       </main>
@@ -835,6 +976,100 @@ function Index() {
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
+
+      {/* Edit track dialog */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm md:items-center" onClick={() => setEditing(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-border p-4">
+              <div className="font-display text-xl">Edit track</div>
+              <button onClick={() => setEditing(null)} className="rounded-full p-1.5 hover:bg-secondary"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-4 p-5">
+              <label className="block">
+                <div className="mb-1 text-[10px] font-bold tracking-widest text-muted-foreground">SONG NAME</div>
+                <input value={editing.song} onChange={(e) => setEditing({ ...editing, song: e.target.value })}
+                  className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
+              </label>
+              <label className="block">
+                <div className="mb-1 flex items-center justify-between text-[10px] font-bold tracking-widest text-muted-foreground">
+                  <span>ARTIST</span>
+                  {artistGroups.length > 0 && <span className="text-[9px] font-normal normal-case tracking-normal text-muted-foreground">Tap a chip to reuse</span>}
+                </div>
+                <input value={editing.artist} onChange={(e) => setEditing({ ...editing, artist: e.target.value })} list="artist-list"
+                  className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
+                <datalist id="artist-list">
+                  {artistGroups.map(([name]) => <option key={name} value={name} />)}
+                </datalist>
+                {artistGroups.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {artistGroups.slice(0, 12).map(([name]) => (
+                      <button key={name} type="button" onClick={() => setEditing({ ...editing, artist: name })}
+                        className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-1)]/40 hover:text-[var(--aurora-1)]">
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </label>
+              <label className="block">
+                <div className="mb-1 text-[10px] font-bold tracking-widest text-muted-foreground">ALBUM</div>
+                <input value={editing.album} onChange={(e) => setEditing({ ...editing, album: e.target.value })}
+                  className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
+              </label>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-secondary/30 p-4">
+              <button onClick={() => setEditing(null)} className="rounded-full border border-border bg-secondary/60 px-4 py-2 text-xs font-semibold hover:bg-secondary">Cancel</button>
+              <button onClick={saveTrackEdits} className="bg-aurora shadow-aurora rounded-full px-5 py-2 text-xs font-bold text-primary-foreground hover:brightness-110">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile control sheet (touch-first controls for shuffle/repeat/EQ/fullscreen/download) */}
+      <button onClick={() => setShowMobileMenu(true)} className="absolute bottom-28 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-panel/90 shadow-xl backdrop-blur-xl md:hidden" title="More">
+        <MoreVertical className="h-5 w-5" />
+      </button>
+      {showMobileMenu && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm md:hidden" onClick={() => setShowMobileMenu(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full rounded-t-3xl border-t border-border bg-panel/95 p-5 pb-8 shadow-2xl backdrop-blur-xl">
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
+            <div className="grid grid-cols-4 gap-3">
+              <button onClick={() => { setShuffle((s) => !s); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${shuffle ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <Shuffle className="h-5 w-5" /><span className="text-[10px] font-semibold">Shuffle</span>
+              </button>
+              <button onClick={() => { setRepeat((r) => !r); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeat ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">Repeat</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); toggleFullscreen(); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Maximize2 className="h-5 w-5" /><span className="text-[10px] font-semibold">Full</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); if (current) downloadCurrent(); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3" disabled={!current}>
+                <Download className="h-5 w-5" /><span className="text-[10px] font-semibold">Download</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setShowQueue(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <ListMusic className="h-5 w-5" /><span className="text-[10px] font-semibold">Queue</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); if (current) setEditing({ id: current.id, song: current.song, artist: current.artist, album: current.album }); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3" disabled={!current}>
+                <Pencil className="h-5 w-5" /><span className="text-[10px] font-semibold">Edit</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setMuted((m) => !m); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}<span className="text-[10px] font-semibold">{muted ? "Unmute" : "Mute"}</span>
+              </button>
+            </div>
+            <div className="mt-4 flex items-center gap-3 px-1">
+              <Volume2 className="h-4 w-4 text-muted-foreground" />
+              <input type="range" min={0} max={1} step={0.01} value={muted ? 0 : volume}
+                onChange={(e) => { setVolume(parseFloat(e.target.value)); setMuted(false); }}
+                className="flex-1 accent-[var(--aurora-2)]" />
+            </div>
+            <p className="mt-3 text-center text-[10px] text-muted-foreground">Swipe ← → on the cover to skip tracks · ↑↓ to skip 10s</p>
+          </div>
+        </div>
+      )}
 
       {/* Equalizer panel */}
       {showEq && (
