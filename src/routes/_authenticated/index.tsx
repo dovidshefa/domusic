@@ -764,6 +764,36 @@ function Index() {
 
           {loading ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
+          ) : view.type === "artists" ? (
+            artistGroups.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
+                No artists yet. Upload tracks or assign artists by editing a track.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
+                {artistGroups.map(([name, count]) => {
+                  const sample = tracks.find((t) => (t.artist || "Unknown") === name);
+                  return (
+                    <button key={name} onClick={() => setView({ type: "artist", name })}
+                      className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background text-left transition hover:-translate-y-1.5 hover:border-[var(--aurora-1)]/40 hover:shadow-[0_20px_50px_-15px_rgba(244,114,182,0.35)]">
+                      <div className="relative aspect-square overflow-hidden">
+                        <img src={sample?.cover || "https://picsum.photos/seed/artist/600/600"} alt={name}
+                          className="h-full w-full scale-110 object-cover blur-[1px] brightness-75 transition duration-700 group-hover:scale-125" />
+                        <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 via-black/30 to-transparent p-4">
+                          <div className="bg-aurora -ml-1 mb-1 flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl">
+                            <UserIcon className="h-5 w-5" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <div className="truncate text-base font-bold">{name}</div>
+                        <div className="text-xs text-muted-foreground">{count} track{count !== 1 ? "s" : ""}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
               No tracks here yet. Click "Upload Music / Video" to add some.
