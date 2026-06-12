@@ -898,11 +898,3 @@ function Index() {
     </div>
   );
 }
-        @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
-        @keyframes eq-1 { from { height: 60%; } to { height: 25%; } }
-        @keyframes eq-2 { from { height: 35%; } to { height: 85%; } }
-        @keyframes eq-3 { from { height: 75%; } to { height: 30%; } }
-      `}</style>
-    </div>
-  );
-}
