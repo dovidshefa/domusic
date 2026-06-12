@@ -745,13 +745,21 @@ function Index() {
               <button onClick={() => setShuffle((s) => !s)} className={`hidden p-2 transition md:block ${shuffle ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
                 <Shuffle className="h-4 w-4" />
               </button>
-              <button onClick={handlePrev} className="rounded-full p-2 text-foreground transition hover:scale-110">
+              <button onClick={handlePrev} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Previous (Shift+←)">
                 <SkipBack className="h-5 w-5" />
+              </button>
+              <button onClick={() => skipBy(-10)} className="relative rounded-full p-2 text-foreground transition hover:scale-110 hover:text-[var(--aurora-2)]" title="Back 10s (←)">
+                <Rewind className="h-5 w-5" />
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] font-bold">10</span>
               </button>
               <button onClick={() => setPlaying((p) => !p)} className="bg-aurora shadow-aurora flex h-12 w-12 items-center justify-center rounded-full text-primary-foreground transition hover:scale-105 hover:brightness-110 md:h-14 md:w-14">
                 {playing ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
               </button>
-              <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110">
+              <button onClick={() => skipBy(10)} className="relative rounded-full p-2 text-foreground transition hover:scale-110 hover:text-[var(--aurora-2)]" title="Forward 10s (→)">
+                <FastForward className="h-5 w-5" />
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] font-bold">10</span>
+              </button>
+              <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Next (Shift+→)">
                 <SkipForward className="h-5 w-5" />
               </button>
               <button onClick={() => setRepeat((r) => !r)} className={`hidden p-2 transition md:block ${repeat ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
