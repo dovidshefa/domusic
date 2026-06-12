@@ -176,6 +176,12 @@ function Index() {
   const isVideo = current?.kind === "video";
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
 
+  const artistGroups = useMemo(() => {
+    const map = new Map<string, number>();
+    tracks.forEach((t) => map.set(t.artist || "Unknown", (map.get(t.artist || "Unknown") ?? 0) + 1));
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [tracks]);
+
   const filtered = useMemo(() => {
     let list = tracks;
     if (view.type === "favorites") list = list.filter((t) => t.liked);
@@ -183,6 +189,8 @@ function Index() {
     else if (view.type === "trending") list = [...list].sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0));
     else if (view.type === "playlist" && activePlaylist) {
       list = activePlaylist.trackIds.map((id) => tracks.find((t) => t.id === id)!).filter(Boolean);
+    } else if (view.type === "artist") {
+      list = list.filter((t) => (t.artist || "Unknown") === view.name);
     }
     if (query) {
       const q = query.toLowerCase();
