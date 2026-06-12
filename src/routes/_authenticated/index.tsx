@@ -40,6 +40,7 @@ type View =
 type EditingTrack = { id: string; song: string; artist: string; album: string } | null;
 
 const RECENT_KEY = "dovid-recent-v1";
+const EQ_KEY = "dovid-eq-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
