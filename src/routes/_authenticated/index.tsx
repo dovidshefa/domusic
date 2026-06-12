@@ -315,6 +315,23 @@ function Index() {
     if (t?.storage_path) await supabase.storage.from("media").remove([t.storage_path]);
   };
 
+  const saveTrackEdits = async () => {
+    if (!editing) return;
+    const { id, song, artist, album } = editing;
+    const cleanSong = song.trim() || "Untitled";
+    const cleanArtist = artist.trim() || "Unknown";
+    const cleanAlbum = album.trim() || "Local Files";
+    setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, song: cleanSong, artist: cleanArtist, album: cleanAlbum } : x)));
+    setEditing(null);
+    await supabase.from("tracks").update({ song: cleanSong, artist: cleanArtist, album: cleanAlbum }).eq("id", id);
+  };
+
+  const assignTracksToArtist = async (trackIds: string[], artistName: string) => {
+    const name = artistName.trim() || "Unknown";
+    setTracks((ts) => ts.map((x) => (trackIds.includes(x.id) ? { ...x, artist: name } : x)));
+    await supabase.from("tracks").update({ artist: name }).in("id", trackIds);
+  };
+
   const createPlaylist = async () => {
     if (!user) return;
     const name = prompt("Name your playlist");
