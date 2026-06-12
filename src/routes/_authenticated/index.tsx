@@ -831,12 +831,73 @@ function Index() {
         </aside>
       )}
 
-      <audio ref={audioRef} src={!isVideo ? current?.src : undefined}
+      <audio ref={audioRef} src={!isVideo ? current?.src : undefined} crossOrigin="anonymous"
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
 
+      {/* Equalizer panel */}
+      {showEq && (
+        <div className="absolute bottom-28 right-4 z-40 w-[340px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-6">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-display text-lg">Equalizer</div>
+              <div className="text-[10px] text-muted-foreground">Applies to all output — speakers, headphones, Bluetooth</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest">
+                <input type="checkbox" checked={eqEnabled} onChange={(e) => setEqEnabled(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--aurora-2)]" />
+                On
+              </label>
+              <button onClick={() => setShowEq(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {Object.keys(EQ_PRESETS).map((name) => (
+              <button key={name} onClick={() => { setEqGains(EQ_PRESETS[name]); setEqEnabled(true); }}
+                className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]">
+                {name}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            {EQ_BANDS.map((_, i) => (
+              <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+                <span className="text-[9px] tabular-nums text-muted-foreground">{eqGains[i] > 0 ? "+" : ""}{eqGains[i]}dB</span>
+                <input type="range" min={-12} max={12} step={1} value={eqGains[i]}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value);
+                    setEqGains((g) => g.map((x, idx) => (idx === i ? v : x)));
+                    setEqEnabled(true);
+                  }}
+                  className="eq-slider" />
+                <span className="text-[9px] font-bold text-muted-foreground">{EQ_LABELS[i]}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] leading-snug text-muted-foreground">
+            Tip: Bluetooth & wireless headphones use the OS audio output, so this EQ shapes their sound too. Pair your device from system settings.
+          </p>
+        </div>
+      )}
+
       <style>{`
+        @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
+        @keyframes eq-1 { from { height: 60%; } to { height: 25%; } }
+        @keyframes eq-2 { from { height: 35%; } to { height: 85%; } }
+        @keyframes eq-3 { from { height: 75%; } to { height: 30%; } }
+        .eq-slider {
+          writing-mode: vertical-lr;
+          -webkit-appearance: slider-vertical;
+          appearance: slider-vertical;
+          width: 18px;
+          height: 120px;
+          accent-color: var(--aurora-2);
+        }
+      `}</style>
+    </div>
+  );
+}
         @keyframes eq-0 { from { height: 20%; } to { height: 90%; } }
         @keyframes eq-1 { from { height: 60%; } to { height: 25%; } }
         @keyframes eq-2 { from { height: 35%; } to { height: 85%; } }
