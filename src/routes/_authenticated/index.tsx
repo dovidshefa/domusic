@@ -875,8 +875,8 @@ function Index() {
               className="fader w-28" style={{ ["--val" as string]: `${(muted ? 0 : volume) * 100}%` }} />
           </div>
 
-          <div onClick={onSeek} className="absolute inset-x-0 bottom-0 h-1 cursor-pointer bg-secondary md:hidden">
-            <div className="bg-aurora h-full" style={{ width: `${progressPct}%` }} />
+          <div onPointerDown={onSeekPointerDown} className="absolute inset-x-0 bottom-0 h-1.5 cursor-pointer touch-none bg-secondary md:hidden">
+            <div className="bg-aurora pointer-events-none h-full" style={{ width: `${progressPct}%` }} />
           </div>
         </footer>
       </main>
