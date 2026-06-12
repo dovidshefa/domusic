@@ -335,18 +335,104 @@ function Index() {
     if (videoRef.current) videoRef.current.currentTime = t;
   };
 
+  const skipBy = (sec: number) => {
+    const el = isVideo ? videoRef.current : audioRef.current;
+    if (!el) return;
+    const t = Math.max(0, Math.min((duration || el.duration || 0), el.currentTime + sec));
+    el.currentTime = t;
+    setProgress(t);
+  };
+
+  const toggleFullscreen = async () => {
+    const el = playerStageRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) await el.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (err) { console.error(err); }
+  };
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  const downloadCurrent = async () => {
+    if (!current) return;
+    try {
+      let url = current.src;
+      let filename = `${current.song}.${current.kind === "video" ? "mp4" : "mp3"}`;
+      if (current.storage_path) {
+        const { data } = await supabase.storage.from("media").createSignedUrl(
+          current.storage_path, 60 * 10, { download: filename }
+        );
+        if (data?.signedUrl) url = data.signedUrl;
+      }
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { console.error(e); }
+  };
+
+  // ---- Web Audio Equalizer (works for any output device incl. Bluetooth) ----
+  const ensureEqGraph = useCallback((el: HTMLMediaElement | null) => {
+    if (!el) return;
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
+        if (!Ctx) return;
+        audioCtxRef.current = new Ctx();
+        filtersRef.current = EQ_BANDS.map((f, i) => {
+          const filter = audioCtxRef.current!.createBiquadFilter();
+          filter.type = i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
+          filter.frequency.value = f;
+          filter.Q.value = 1.0;
+          filter.gain.value = eqGains[i] ?? 0;
+          return filter;
+        });
+      }
+      const ctx = audioCtxRef.current!;
+      if (ctx.state === "suspended") ctx.resume();
+      if (!sourcesRef.current.has(el)) {
+        const src = ctx.createMediaElementSource(el);
+        sourcesRef.current.set(el, src);
+        // chain: src -> f0 -> f1 ... -> destination
+        let node: AudioNode = src;
+        filtersRef.current.forEach((f) => { node.connect(f); node = f; });
+        node.connect(ctx.destination);
+      }
+    } catch (err) {
+      console.warn("EQ setup failed", err);
+    }
+  }, [eqGains]);
+
+  useEffect(() => {
+    if (!eqEnabled) return;
+    ensureEqGraph(audioRef.current);
+    if (isVideo) ensureEqGraph(videoRef.current);
+  }, [eqEnabled, currentId, isVideo, ensureEqGraph]);
+
+  useEffect(() => {
+    filtersRef.current.forEach((f, i) => {
+      if (f) f.gain.value = eqEnabled ? (eqGains[i] ?? 0) : 0;
+    });
+  }, [eqGains, eqEnabled]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
       if (e.code === "Space") { e.preventDefault(); setPlaying((p) => !p); }
-      else if (e.code === "ArrowRight") handleNext();
-      else if (e.code === "ArrowLeft") handlePrev();
+      else if (e.code === "ArrowRight" && e.shiftKey) handleNext();
+      else if (e.code === "ArrowLeft" && e.shiftKey) handlePrev();
+      else if (e.code === "ArrowRight") skipBy(10);
+      else if (e.code === "ArrowLeft") skipBy(-10);
       else if (e.key === "m") setMuted((m) => !m);
+      else if (e.key === "f") toggleFullscreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, tracks, shuffle, progress]);
+  }, [currentId, tracks, shuffle, progress, isVideo, duration]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
