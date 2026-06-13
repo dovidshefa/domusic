@@ -345,6 +345,36 @@ function Index() {
     await supabase.from("tracks").update({ artist: name }).in("id", trackIds);
   };
 
+  const removeTrackFromArtist = async (trackId: string) => {
+    setTracks((ts) => ts.map((x) => (x.id === trackId ? { ...x, artist: "Unknown" } : x)));
+    await supabase.from("tracks").update({ artist: "Unknown" }).eq("id", trackId);
+  };
+
+  const triggerArtistAvatarUpload = (artistName: string) => {
+    setEditingArtistAvatar(artistName);
+    artistAvatarFileRef.current?.click();
+  };
+
+  const handleArtistAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const name = editingArtistAvatar;
+    e.target.value = "";
+    if (!file || !name || !user) return;
+    if (!file.type.startsWith("image/")) return;
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const safe = name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "artist";
+    const path = `${user.id}/artists/${safe}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("media").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) return;
+    await supabase.from("artist_profiles").upsert(
+      { user_id: user.id, name, avatar_url: path, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,name" },
+    );
+    const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
+    if (signed?.signedUrl) setArtistAvatars((m) => ({ ...m, [name]: signed.signedUrl }));
+    setEditingArtistAvatar(null);
+  };
+
   const createPlaylist = async () => {
     if (!user) return;
     const name = prompt("Name your playlist");
