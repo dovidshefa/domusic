@@ -691,7 +691,7 @@ function Index() {
                   <div className={isFullscreen
                       ? "group/vid relative h-full w-full"
                       : "group/vid relative aspect-video w-[min(92vw,720px)] overflow-hidden rounded-2xl shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[640px] lg:w-[760px]"}
-                    onClick={(e) => { if ((e.target as HTMLElement).tagName === "VIDEO") togglePlay(); }}>
+                    onClick={(e) => { if ((e.target as HTMLElement).tagName === "VIDEO") setPlaying((p) => !p); }}>
                     <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                       onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                       onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
@@ -699,7 +699,7 @@ function Index() {
                       className={isFullscreen ? "h-full w-full object-contain" : "h-full w-full object-cover"} />
                     {/* YouTube-style hover overlay */}
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-0 transition-opacity duration-300 group-hover/vid:opacity-100" />
-                    <button onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                    <button onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
                       className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-black/80 group-hover/vid:opacity-100 md:h-20 md:w-20"
                       title={playing ? "Pause" : "Play"}>
                       {playing ? <Pause className="h-7 w-7 md:h-9 md:w-9" /> : <Play className="ml-1 h-7 w-7 md:ml-1.5 md:h-9 md:w-9" />}
