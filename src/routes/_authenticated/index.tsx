@@ -86,6 +86,9 @@ function Index() {
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]);
   const [editing, setEditing] = useState<EditingTrack>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [artistAvatars, setArtistAvatars] = useState<Record<string, string>>({});
+  const artistAvatarFileRef = useRef<HTMLInputElement>(null);
+  const [editingArtistAvatar, setEditingArtistAvatar] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
