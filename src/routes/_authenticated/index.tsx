@@ -915,6 +915,13 @@ function Index() {
                           title="Edit info / assign artist">
                           <Pencil className="h-3.5 w-3.5 text-white" />
                         </button>
+                        {view.type === "artist" && (
+                          <button onClick={(e) => { e.stopPropagation(); removeTrackFromArtist(t.id); }}
+                            className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-2)]/80"
+                            title="Remove from this artist">
+                            <UserIcon className="h-3.5 w-3.5 text-white" />
+                          </button>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }}
                           className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-1)]/80"
                           title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}>
