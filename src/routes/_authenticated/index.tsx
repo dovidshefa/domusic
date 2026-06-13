@@ -828,6 +828,32 @@ function Index() {
             )}
           </div>
 
+          <input ref={artistAvatarFileRef} type="file" accept="image/*" className="hidden" onChange={handleArtistAvatarFile} />
+
+          {view.type === "artist" && (
+            <div className="mb-6 flex items-center gap-4 rounded-2xl border border-border bg-card/60 p-4 backdrop-blur">
+              <div className="relative">
+                {artistAvatars[view.name] ? (
+                  <img src={artistAvatars[view.name]} alt={view.name} className="h-20 w-20 rounded-full object-cover ring-2 ring-[var(--aurora-2)]/40" />
+                ) : (
+                  <div className="bg-aurora flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-primary-foreground">
+                    {view.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <button onClick={() => triggerArtistAvatarUpload(view.name)}
+                  className="absolute -bottom-1 -right-1 rounded-full bg-[var(--aurora-2)] p-1.5 text-primary-foreground shadow-lg transition hover:scale-110"
+                  title="Change artist avatar">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold tracking-[0.25em] text-muted-foreground">ARTIST</div>
+                <div className="truncate font-display text-3xl">{view.name}</div>
+                <div className="text-xs text-muted-foreground">{filtered.length} track{filtered.length !== 1 ? "s" : ""} · tap the user icon on a song to remove it from this artist</div>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
           ) : view.type === "artists" ? (
