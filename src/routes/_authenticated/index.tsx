@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
-      { title: "DOVID MUSIC ULTRA — Your Library" },
+      { title: "AURORA — Your Library" },
       { name: "description", content: "Your personal music & music-video library, synced across devices." },
     ],
   }),
@@ -86,6 +86,9 @@ function Index() {
   const [eqGains, setEqGains] = useState<number[]>([0, 0, 0, 0, 0]);
   const [editing, setEditing] = useState<EditingTrack>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [artistAvatars, setArtistAvatars] = useState<Record<string, string>>({});
+  const artistAvatarFileRef = useRef<HTMLInputElement>(null);
+  const [editingArtistAvatar, setEditingArtistAvatar] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -113,11 +116,21 @@ function Index() {
         avatar: profile?.avatar_url ?? meta.avatar_url ?? null,
       });
 
-      const [{ data: tRows }, { data: pRows }, { data: ptRows }] = await Promise.all([
+      const [{ data: tRows }, { data: pRows }, { data: ptRows }, { data: aRows }] = await Promise.all([
         supabase.from("tracks").select("*").order("created_at", { ascending: false }),
         supabase.from("playlists").select("*").order("created_at", { ascending: true }),
         supabase.from("playlist_tracks").select("playlist_id, track_id, position").order("position", { ascending: true }),
+        supabase.from("artist_profiles").select("name, avatar_url"),
       ]);
+
+      const avMap: Record<string, string> = {};
+      await Promise.all((aRows ?? []).map(async (r: any) => {
+        if (!r.avatar_url) return;
+        // avatar_url is a storage path under media bucket
+        const { data } = await supabase.storage.from("media").createSignedUrl(r.avatar_url, SIGNED_URL_TTL);
+        if (data?.signedUrl) avMap[r.name] = data.signedUrl;
+      }));
+      setArtistAvatars(avMap);
 
       // resign URLs for any private storage tracks
       const refreshed = await Promise.all(
@@ -330,6 +343,36 @@ function Index() {
     const name = artistName.trim() || "Unknown";
     setTracks((ts) => ts.map((x) => (trackIds.includes(x.id) ? { ...x, artist: name } : x)));
     await supabase.from("tracks").update({ artist: name }).in("id", trackIds);
+  };
+
+  const removeTrackFromArtist = async (trackId: string) => {
+    setTracks((ts) => ts.map((x) => (x.id === trackId ? { ...x, artist: "Unknown" } : x)));
+    await supabase.from("tracks").update({ artist: "Unknown" }).eq("id", trackId);
+  };
+
+  const triggerArtistAvatarUpload = (artistName: string) => {
+    setEditingArtistAvatar(artistName);
+    artistAvatarFileRef.current?.click();
+  };
+
+  const handleArtistAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const name = editingArtistAvatar;
+    e.target.value = "";
+    if (!file || !name || !user) return;
+    if (!file.type.startsWith("image/")) return;
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const safe = name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "artist";
+    const path = `${user.id}/artists/${safe}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("media").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) return;
+    await supabase.from("artist_profiles").upsert(
+      { user_id: user.id, name, avatar_url: path, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,name" },
+    );
+    const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
+    if (signed?.signedUrl) setArtistAvatars((m) => ({ ...m, [name]: signed.signedUrl }));
+    setEditingArtistAvatar(null);
   };
 
   const createPlaylist = async () => {
@@ -552,8 +595,8 @@ function Index() {
             <span className="absolute inset-0 -z-10 animate-pulse-ring rounded-xl bg-[var(--aurora-2)]/40" />
           </div>
           <div>
-            <div className="font-display text-aurora text-2xl leading-none">DOVID</div>
-            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">MUSIC · ULTRA</div>
+            <div className="font-display text-aurora text-2xl leading-none">AURORA</div>
+            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">SOUND · STAGE</div>
           </div>
         </div>
 
@@ -785,6 +828,32 @@ function Index() {
             )}
           </div>
 
+          <input ref={artistAvatarFileRef} type="file" accept="image/*" className="hidden" onChange={handleArtistAvatarFile} />
+
+          {view.type === "artist" && (
+            <div className="mb-6 flex items-center gap-4 rounded-2xl border border-border bg-card/60 p-4 backdrop-blur">
+              <div className="relative">
+                {artistAvatars[view.name] ? (
+                  <img src={artistAvatars[view.name]} alt={view.name} className="h-20 w-20 rounded-full object-cover ring-2 ring-[var(--aurora-2)]/40" />
+                ) : (
+                  <div className="bg-aurora flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold text-primary-foreground">
+                    {view.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <button onClick={() => triggerArtistAvatarUpload(view.name)}
+                  className="absolute -bottom-1 -right-1 rounded-full bg-[var(--aurora-2)] p-1.5 text-primary-foreground shadow-lg transition hover:scale-110"
+                  title="Change artist avatar">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold tracking-[0.25em] text-muted-foreground">ARTIST</div>
+                <div className="truncate font-display text-3xl">{view.name}</div>
+                <div className="text-xs text-muted-foreground">{filtered.length} track{filtered.length !== 1 ? "s" : ""} · tap the user icon on a song to remove it from this artist</div>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
           ) : view.type === "artists" ? (
@@ -796,23 +865,32 @@ function Index() {
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
                 {artistGroups.map(([name, count]) => {
                   const sample = tracks.find((t) => (t.artist || "Unknown") === name);
+                  const avatar = artistAvatars[name];
                   return (
-                    <button key={name} onClick={() => setView({ type: "artist", name })}
-                      className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background text-left transition hover:-translate-y-1.5 hover:border-[var(--aurora-1)]/40 hover:shadow-[0_20px_50px_-15px_rgba(244,114,182,0.35)]">
-                      <div className="relative aspect-square overflow-hidden">
-                        <img src={sample?.cover || "https://picsum.photos/seed/artist/600/600"} alt={name}
-                          className="h-full w-full scale-110 object-cover blur-[1px] brightness-75 transition duration-700 group-hover:scale-125" />
-                        <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 via-black/30 to-transparent p-4">
-                          <div className="bg-aurora -ml-1 mb-1 flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl">
-                            <UserIcon className="h-5 w-5" />
+                    <div key={name} className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background text-left transition hover:-translate-y-1.5 hover:border-[var(--aurora-1)]/40 hover:shadow-[0_20px_50px_-15px_rgba(244,114,182,0.35)]">
+                      <button onClick={() => setView({ type: "artist", name })} className="block w-full text-left">
+                        <div className="relative aspect-square overflow-hidden">
+                          <img src={avatar || sample?.cover || "https://picsum.photos/seed/artist/600/600"} alt={name}
+                            className={`h-full w-full object-cover transition duration-700 group-hover:scale-110 ${avatar ? "" : "scale-110 blur-[1px] brightness-75 group-hover:scale-125"}`} />
+                          <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/90 via-black/20 to-transparent p-4">
+                            {!avatar && (
+                              <div className="bg-aurora -ml-1 mb-1 flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl">
+                                <UserIcon className="h-5 w-5" />
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                      <div className="p-4">
-                        <div className="truncate text-base font-bold">{name}</div>
-                        <div className="text-xs text-muted-foreground">{count} track{count !== 1 ? "s" : ""}</div>
-                      </div>
-                    </button>
+                        <div className="p-4">
+                          <div className="truncate text-base font-bold">{name}</div>
+                          <div className="text-xs text-muted-foreground">{count} track{count !== 1 ? "s" : ""}</div>
+                        </div>
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); triggerArtistAvatarUpload(name); }}
+                        className="absolute right-3 top-3 rounded-full bg-black/70 p-2 text-white opacity-0 backdrop-blur transition hover:bg-[var(--aurora-2)]/80 group-hover:opacity-100"
+                        title="Set artist avatar">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -863,6 +941,13 @@ function Index() {
                           title="Edit info / assign artist">
                           <Pencil className="h-3.5 w-3.5 text-white" />
                         </button>
+                        {view.type === "artist" && (
+                          <button onClick={(e) => { e.stopPropagation(); removeTrackFromArtist(t.id); }}
+                            className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-2)]/80"
+                            title="Remove from this artist">
+                            <UserIcon className="h-3.5 w-3.5 text-white" />
+                          </button>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }}
                           className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-1)]/80"
                           title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}>
