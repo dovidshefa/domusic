@@ -688,13 +688,34 @@ function Index() {
               <div ref={playerStageRef} onTouchStart={onHeroTouchStart} onTouchEnd={onHeroTouchEnd}
                 className={`relative select-none ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
                 {isVideo && current?.src ? (
-                  <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
-                    onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
-                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                    onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
-                    className={isFullscreen
-                      ? "h-full w-full object-contain"
-                      : "aspect-video w-[280px] rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[420px]"} />
+                  <div className={isFullscreen
+                      ? "group/vid relative h-full w-full"
+                      : "group/vid relative aspect-video w-[min(92vw,720px)] overflow-hidden rounded-2xl shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[640px] lg:w-[760px]"}
+                    onClick={(e) => { if ((e.target as HTMLElement).tagName === "VIDEO") togglePlay(); }}>
+                    <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
+                      onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
+                      onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                      onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
+                      className={isFullscreen ? "h-full w-full object-contain" : "h-full w-full object-cover"} />
+                    {/* YouTube-style hover overlay */}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-0 transition-opacity duration-300 group-hover/vid:opacity-100" />
+                    <button onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                      className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-black/80 group-hover/vid:opacity-100 md:h-20 md:w-20"
+                      title={playing ? "Pause" : "Play"}>
+                      {playing ? <Pause className="h-7 w-7 md:h-9 md:w-9" /> : <Play className="ml-1 h-7 w-7 md:ml-1.5 md:h-9 md:w-9" />}
+                    </button>
+                    <div className="absolute inset-x-0 bottom-0 px-3 pb-3 opacity-0 transition-opacity duration-300 group-hover/vid:opacity-100">
+                      <div className="mb-1 flex items-center justify-between text-[11px] tabular-nums text-white/90">
+                        <span>{fmt(progress)}</span>
+                        <span>{fmt(duration || 0)}</span>
+                      </div>
+                      <div onPointerDown={onSeekPointerDown} onClick={(e) => e.stopPropagation()}
+                        className="group/bar relative h-1 cursor-pointer touch-none rounded-full bg-white/25 transition-[height] hover:h-1.5">
+                        <div className="bg-aurora pointer-events-none absolute inset-y-0 left-0 rounded-full" style={{ width: `${progressPct}%` }} />
+                        <div className="pointer-events-none absolute -top-1.5 h-4 w-4 -translate-x-1/2 rounded-full bg-white shadow-lg opacity-0 transition group-hover/bar:opacity-100" style={{ left: `${progressPct}%` }} />
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song}
                     className={isFullscreen
