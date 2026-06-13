@@ -116,11 +116,21 @@ function Index() {
         avatar: profile?.avatar_url ?? meta.avatar_url ?? null,
       });
 
-      const [{ data: tRows }, { data: pRows }, { data: ptRows }] = await Promise.all([
+      const [{ data: tRows }, { data: pRows }, { data: ptRows }, { data: aRows }] = await Promise.all([
         supabase.from("tracks").select("*").order("created_at", { ascending: false }),
         supabase.from("playlists").select("*").order("created_at", { ascending: true }),
         supabase.from("playlist_tracks").select("playlist_id, track_id, position").order("position", { ascending: true }),
+        supabase.from("artist_profiles").select("name, avatar_url"),
       ]);
+
+      const avMap: Record<string, string> = {};
+      await Promise.all((aRows ?? []).map(async (r: any) => {
+        if (!r.avatar_url) return;
+        // avatar_url is a storage path under media bucket
+        const { data } = await supabase.storage.from("media").createSignedUrl(r.avatar_url, SIGNED_URL_TTL);
+        if (data?.signedUrl) avMap[r.name] = data.signedUrl;
+      }));
+      setArtistAvatars(avMap);
 
       // resign URLs for any private storage tracks
       const refreshed = await Promise.all(
