@@ -74,9 +74,12 @@ function Index() {
   const [showEq, setShowEq] = useState(false);
   const EQ_BANDS = [60, 230, 910, 3600, 14000];
   const EQ_LABELS = ["60Hz", "230Hz", "910Hz", "3.6k", "14k"];
+  const EQ_MIN = -24;
+  const EQ_MAX = 24;
   const EQ_PRESETS: Record<string, number[]> = {
     Flat: [0, 0, 0, 0, 0],
     "Bass Boost": [8, 5, 1, 0, 0],
+    "Bass MAX 💥": [24, 18, 4, 0, 0],
     Vocal: [-2, -1, 4, 5, 2],
     Treble: [0, 0, 1, 5, 8],
     Electronic: [6, 2, -2, 3, 6],
