@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
-      { title: "AURORA — Your Library" },
+      { title: "LUMEN — Your Library" },
       { name: "description", content: "Your personal music & music-video library, synced across devices." },
     ],
   }),
@@ -595,8 +595,8 @@ function Index() {
             <span className="absolute inset-0 -z-10 animate-pulse-ring rounded-xl bg-[var(--aurora-2)]/40" />
           </div>
           <div>
-            <div className="font-display text-aurora text-2xl leading-none">AURORA</div>
-            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">SOUND · STAGE</div>
+            <div className="font-display text-aurora text-2xl leading-none">LUMEN</div>
+            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">PLAY IN LIGHT</div>
           </div>
         </div>
 
