@@ -1146,7 +1146,7 @@ function Index() {
               <label className="block">
                 <div className="mb-1 flex items-center justify-between text-[10px] font-bold tracking-widest text-muted-foreground">
                   <span>ARTIST</span>
-                  {artistGroups.length > 0 && <span className="text-[9px] font-normal normal-case tracking-normal text-muted-foreground">Tap a chip to reuse</span>}
+                  {artistGroups.length > 0 && <span className="text-[9px] font-normal normal-case tracking-normal text-muted-foreground">Separate with commas · tap chip to add</span>}
                 </div>
                 <input value={editing.artist} onChange={(e) => setEditing({ ...editing, artist: e.target.value })} list="artist-list"
                   className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
