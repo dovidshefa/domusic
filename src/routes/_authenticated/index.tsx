@@ -354,9 +354,39 @@ function Index() {
     await supabase.from("tracks").update({ artist: name }).in("id", trackIds);
   };
 
-  const removeTrackFromArtist = async (trackId: string) => {
-    setTracks((ts) => ts.map((x) => (x.id === trackId ? { ...x, artist: "Unknown" } : x)));
-    await supabase.from("tracks").update({ artist: "Unknown" }).eq("id", trackId);
+  const removeTrackFromArtist = async (trackId: string, artistName: string) => {
+    const t = tracks.find((x) => x.id === trackId);
+    if (!t) return;
+    const remaining = splitArtists(t.artist).filter((a) => a !== artistName);
+    const next = remaining.length ? remaining.join(", ") : "Unknown";
+    setTracks((ts) => ts.map((x) => (x.id === trackId ? { ...x, artist: next } : x)));
+    await supabase.from("tracks").update({ artist: next }).eq("id", trackId);
+  };
+
+  const renameArtist = async (oldName: string) => {
+    if (!user) return;
+    const newName = prompt(`Rename "${oldName}" to:`, oldName)?.trim();
+    if (!newName || newName === oldName) return;
+    const affected = tracks.filter((t) => splitArtists(t.artist).includes(oldName));
+    const updates = affected.map((t) => {
+      const parts = splitArtists(t.artist).map((a) => (a === oldName ? newName : a));
+      const dedup = [...new Set(parts)];
+      return { id: t.id, artist: dedup.join(", ") };
+    });
+    setTracks((ts) => ts.map((x) => {
+      const u = updates.find((y) => y.id === x.id);
+      return u ? { ...x, artist: u.artist } : x;
+    }));
+    await Promise.all(updates.map((u) => supabase.from("tracks").update({ artist: u.artist }).eq("id", u.id)));
+    // move avatar mapping locally
+    setArtistAvatars((m) => {
+      if (!m[oldName]) return m;
+      const { [oldName]: av, ...rest } = m;
+      return { ...rest, [newName]: av };
+    });
+    await supabase.from("artist_profiles").update({ name: newName, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id).eq("name", oldName);
+    if (view.type === "artist" && view.name === oldName) setView({ type: "artist", name: newName });
   };
 
   const triggerArtistAvatarUpload = (artistName: string) => {
