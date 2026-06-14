@@ -1208,7 +1208,7 @@ function Index() {
             {EQ_BANDS.map((_, i) => (
               <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
                 <span className="text-[9px] tabular-nums text-muted-foreground">{eqGains[i] > 0 ? "+" : ""}{eqGains[i]}dB</span>
-                <input type="range" min={-12} max={12} step={1} value={eqGains[i]}
+                <input type="range" min={EQ_MIN} max={EQ_MAX} step={1} value={eqGains[i]}
                   onChange={(e) => {
                     const v = parseInt(e.target.value);
                     setEqGains((g) => g.map((x, idx) => (idx === i ? v : x)));
