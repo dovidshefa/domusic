@@ -74,9 +74,12 @@ function Index() {
   const [showEq, setShowEq] = useState(false);
   const EQ_BANDS = [60, 230, 910, 3600, 14000];
   const EQ_LABELS = ["60Hz", "230Hz", "910Hz", "3.6k", "14k"];
+  const EQ_MIN = -24;
+  const EQ_MAX = 24;
   const EQ_PRESETS: Record<string, number[]> = {
     Flat: [0, 0, 0, 0, 0],
     "Bass Boost": [8, 5, 1, 0, 0],
+    "Bass MAX 💥": [24, 18, 4, 0, 0],
     Vocal: [-2, -1, 4, 5, 2],
     Treble: [0, 0, 1, 5, 8],
     Electronic: [6, 2, -2, 3, 6],
@@ -189,9 +192,15 @@ function Index() {
   const isVideo = current?.kind === "video";
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
 
+  const splitArtists = (s: string): string[] => {
+    const parts = (s || "Unknown").split(/\s*(?:,|;|\s+&\s+|\s+feat\.?\s+|\s+ft\.?\s+)\s*/i)
+      .map((x) => x.trim()).filter(Boolean);
+    return parts.length ? parts : ["Unknown"];
+  };
+
   const artistGroups = useMemo(() => {
     const map = new Map<string, number>();
-    tracks.forEach((t) => map.set(t.artist || "Unknown", (map.get(t.artist || "Unknown") ?? 0) + 1));
+    tracks.forEach((t) => splitArtists(t.artist).forEach((n) => map.set(n, (map.get(n) ?? 0) + 1)));
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [tracks]);
 
@@ -203,7 +212,7 @@ function Index() {
     else if (view.type === "playlist" && activePlaylist) {
       list = activePlaylist.trackIds.map((id) => tracks.find((t) => t.id === id)!).filter(Boolean);
     } else if (view.type === "artist") {
-      list = list.filter((t) => (t.artist || "Unknown") === view.name);
+      list = list.filter((t) => splitArtists(t.artist).includes(view.name));
     }
     if (query) {
       const q = query.toLowerCase();
@@ -345,9 +354,39 @@ function Index() {
     await supabase.from("tracks").update({ artist: name }).in("id", trackIds);
   };
 
-  const removeTrackFromArtist = async (trackId: string) => {
-    setTracks((ts) => ts.map((x) => (x.id === trackId ? { ...x, artist: "Unknown" } : x)));
-    await supabase.from("tracks").update({ artist: "Unknown" }).eq("id", trackId);
+  const removeTrackFromArtist = async (trackId: string, artistName: string) => {
+    const t = tracks.find((x) => x.id === trackId);
+    if (!t) return;
+    const remaining = splitArtists(t.artist).filter((a) => a !== artistName);
+    const next = remaining.length ? remaining.join(", ") : "Unknown";
+    setTracks((ts) => ts.map((x) => (x.id === trackId ? { ...x, artist: next } : x)));
+    await supabase.from("tracks").update({ artist: next }).eq("id", trackId);
+  };
+
+  const renameArtist = async (oldName: string) => {
+    if (!user) return;
+    const newName = prompt(`Rename "${oldName}" to:`, oldName)?.trim();
+    if (!newName || newName === oldName) return;
+    const affected = tracks.filter((t) => splitArtists(t.artist).includes(oldName));
+    const updates = affected.map((t) => {
+      const parts = splitArtists(t.artist).map((a) => (a === oldName ? newName : a));
+      const dedup = [...new Set(parts)];
+      return { id: t.id, artist: dedup.join(", ") };
+    });
+    setTracks((ts) => ts.map((x) => {
+      const u = updates.find((y) => y.id === x.id);
+      return u ? { ...x, artist: u.artist } : x;
+    }));
+    await Promise.all(updates.map((u) => supabase.from("tracks").update({ artist: u.artist }).eq("id", u.id)));
+    // move avatar mapping locally
+    setArtistAvatars((m) => {
+      if (!m[oldName]) return m;
+      const { [oldName]: av, ...rest } = m;
+      return { ...rest, [newName]: av };
+    });
+    await supabase.from("artist_profiles").update({ name: newName, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id).eq("name", oldName);
+    if (view.type === "artist" && view.name === oldName) setView({ type: "artist", name: newName });
   };
 
   const triggerArtistAvatarUpload = (artistName: string) => {
@@ -848,8 +887,15 @@ function Index() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[10px] font-bold tracking-[0.25em] text-muted-foreground">ARTIST</div>
-                <div className="truncate font-display text-3xl">{view.name}</div>
-                <div className="text-xs text-muted-foreground">{filtered.length} track{filtered.length !== 1 ? "s" : ""} · tap the user icon on a song to remove it from this artist</div>
+                <div className="flex items-center gap-2">
+                  <div className="truncate font-display text-3xl">{view.name}</div>
+                  <button onClick={() => renameArtist(view.name)}
+                    className="rounded-full border border-border bg-secondary/60 p-1.5 text-muted-foreground transition hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]"
+                    title="Rename artist">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-xs text-muted-foreground">{filtered.length} track{filtered.length !== 1 ? "s" : ""} · separate multiple artists with commas when editing a song</div>
               </div>
             </div>
           )}
@@ -864,7 +910,7 @@ function Index() {
             ) : (
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
                 {artistGroups.map(([name, count]) => {
-                  const sample = tracks.find((t) => (t.artist || "Unknown") === name);
+                  const sample = tracks.find((t) => splitArtists(t.artist).includes(name));
                   const avatar = artistAvatars[name];
                   return (
                     <div key={name} className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background text-left transition hover:-translate-y-1.5 hover:border-[var(--aurora-1)]/40 hover:shadow-[0_20px_50px_-15px_rgba(244,114,182,0.35)]">
@@ -942,7 +988,7 @@ function Index() {
                           <Pencil className="h-3.5 w-3.5 text-white" />
                         </button>
                         {view.type === "artist" && (
-                          <button onClick={(e) => { e.stopPropagation(); removeTrackFromArtist(t.id); }}
+                          <button onClick={(e) => { e.stopPropagation(); removeTrackFromArtist(t.id, view.name); }}
                             className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-2)]/80"
                             title="Remove from this artist">
                             <UserIcon className="h-3.5 w-3.5 text-white" />
@@ -1100,7 +1146,7 @@ function Index() {
               <label className="block">
                 <div className="mb-1 flex items-center justify-between text-[10px] font-bold tracking-widest text-muted-foreground">
                   <span>ARTIST</span>
-                  {artistGroups.length > 0 && <span className="text-[9px] font-normal normal-case tracking-normal text-muted-foreground">Tap a chip to reuse</span>}
+                  {artistGroups.length > 0 && <span className="text-[9px] font-normal normal-case tracking-normal text-muted-foreground">Separate with commas · tap chip to add</span>}
                 </div>
                 <input value={editing.artist} onChange={(e) => setEditing({ ...editing, artist: e.target.value })} list="artist-list"
                   className="w-full rounded-xl border border-border bg-secondary/60 px-3 py-2.5 text-sm focus:border-[var(--aurora-2)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--aurora-2)]/20" />
@@ -1110,7 +1156,12 @@ function Index() {
                 {artistGroups.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {artistGroups.slice(0, 12).map(([name]) => (
-                      <button key={name} type="button" onClick={() => setEditing({ ...editing, artist: name })}
+                      <button key={name} type="button" onClick={() => {
+                        const existing = editing.artist.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
+                        if (existing.includes(name)) return;
+                        const next = [...existing, name].join(", ");
+                        setEditing({ ...editing, artist: next });
+                      }}
                         className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-1)]/40 hover:text-[var(--aurora-1)]">
                         {name}
                       </button>
@@ -1205,7 +1256,7 @@ function Index() {
             {EQ_BANDS.map((_, i) => (
               <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
                 <span className="text-[9px] tabular-nums text-muted-foreground">{eqGains[i] > 0 ? "+" : ""}{eqGains[i]}dB</span>
-                <input type="range" min={-12} max={12} step={1} value={eqGains[i]}
+                <input type="range" min={EQ_MIN} max={EQ_MAX} step={1} value={eqGains[i]}
                   onChange={(e) => {
                     const v = parseInt(e.target.value);
                     setEqGains((g) => g.map((x, idx) => (idx === i ? v : x)));
