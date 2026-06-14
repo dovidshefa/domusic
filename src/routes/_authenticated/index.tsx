@@ -910,7 +910,7 @@ function Index() {
             ) : (
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
                 {artistGroups.map(([name, count]) => {
-                  const sample = tracks.find((t) => (t.artist || "Unknown") === name);
+                  const sample = tracks.find((t) => splitArtists(t.artist).includes(name));
                   const avatar = artistAvatars[name];
                   return (
                     <div key={name} className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background text-left transition hover:-translate-y-1.5 hover:border-[var(--aurora-1)]/40 hover:shadow-[0_20px_50px_-15px_rgba(244,114,182,0.35)]">
