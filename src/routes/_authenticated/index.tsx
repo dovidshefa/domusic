@@ -1244,13 +1244,27 @@ function Index() {
               <button onClick={() => setShowEq(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
             </div>
           </div>
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="mb-2 flex flex-wrap gap-1.5">
             {Object.keys(EQ_PRESETS).map((name) => (
               <button key={name} onClick={() => { setEqGains(EQ_PRESETS[name]); setEqEnabled(true); }}
-                className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]">
+                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold transition ${name === "Bass MAX 💥" ? "border-[var(--aurora-1)]/50 bg-[var(--aurora-1)]/10 text-[var(--aurora-1)] hover:bg-[var(--aurora-1)]/20" : "border-border bg-secondary/60 hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]"}`}>
                 {name}
               </button>
             ))}
+          </div>
+          <div className="mb-3 rounded-xl border border-[var(--aurora-1)]/20 bg-[var(--aurora-1)]/5 p-2.5">
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold tracking-widest text-[var(--aurora-1)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--aurora-1)]" />
+              BASS MAX PRESET VALUES
+            </div>
+            <div className="grid grid-cols-5 gap-1 text-center">
+              {EQ_PRESETS["Bass MAX 💥"].map((db, i) => (
+                <div key={i}>
+                  <div className="text-[10px] font-bold tabular-nums text-foreground">{db > 0 ? "+" : ""}{db}dB</div>
+                  <div className="text-[9px] text-muted-foreground">{EQ_LABELS[i]}</div>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="flex items-end justify-between gap-2">
             {EQ_BANDS.map((_, i) => (
