@@ -1156,7 +1156,12 @@ function Index() {
                 {artistGroups.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {artistGroups.slice(0, 12).map(([name]) => (
-                      <button key={name} type="button" onClick={() => setEditing({ ...editing, artist: name })}
+                      <button key={name} type="button" onClick={() => {
+                        const existing = editing.artist.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
+                        if (existing.includes(name)) return;
+                        const next = [...existing, name].join(", ");
+                        setEditing({ ...editing, artist: next });
+                      }}
                         className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--aurora-1)]/40 hover:text-[var(--aurora-1)]">
                         {name}
                       </button>
