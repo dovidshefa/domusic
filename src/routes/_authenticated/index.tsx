@@ -981,7 +981,7 @@ function Index() {
                           <Pencil className="h-3.5 w-3.5 text-white" />
                         </button>
                         {view.type === "artist" && (
-                          <button onClick={(e) => { e.stopPropagation(); removeTrackFromArtist(t.id); }}
+                          <button onClick={(e) => { e.stopPropagation(); removeTrackFromArtist(t.id, view.name); }}
                             className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-2)]/80"
                             title="Remove from this artist">
                             <UserIcon className="h-3.5 w-3.5 text-white" />
