@@ -70,9 +70,9 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 6%);
   --ring: oklch(0.7 0.22 340);
-  --aurora-1: #ff5b8a;     /* coral pink */
-  --aurora-2: #a855f7;     /* violet */
-  --aurora-3: #38bdf8;     /* sky cyan */
+  --aurora-1: #f5d3a0;     /* warm chrome highlight */
+  --aurora-2: #8b5cf6;     /* electric violet */
+  --aurora-3: #22d3ee;     /* iridescent cyan */
   --panel: oklch(0.12 0.02 280);
 }
 
