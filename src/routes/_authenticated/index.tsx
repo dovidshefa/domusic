@@ -192,9 +192,15 @@ function Index() {
   const isVideo = current?.kind === "video";
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
 
+  const splitArtists = (s: string): string[] => {
+    const parts = (s || "Unknown").split(/\s*(?:,|;|\s+&\s+|\s+feat\.?\s+|\s+ft\.?\s+)\s*/i)
+      .map((x) => x.trim()).filter(Boolean);
+    return parts.length ? parts : ["Unknown"];
+  };
+
   const artistGroups = useMemo(() => {
     const map = new Map<string, number>();
-    tracks.forEach((t) => map.set(t.artist || "Unknown", (map.get(t.artist || "Unknown") ?? 0) + 1));
+    tracks.forEach((t) => splitArtists(t.artist).forEach((n) => map.set(n, (map.get(n) ?? 0) + 1)));
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [tracks]);
 
@@ -206,7 +212,7 @@ function Index() {
     else if (view.type === "playlist" && activePlaylist) {
       list = activePlaylist.trackIds.map((id) => tracks.find((t) => t.id === id)!).filter(Boolean);
     } else if (view.type === "artist") {
-      list = list.filter((t) => (t.artist || "Unknown") === view.name);
+      list = list.filter((t) => splitArtists(t.artist).includes(view.name));
     }
     if (query) {
       const q = query.toLowerCase();
