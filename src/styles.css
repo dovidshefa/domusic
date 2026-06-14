@@ -37,7 +37,7 @@
   --font-display: "Space Grotesk", "Inter", sans-serif;
   --font-sans: "Inter", sans-serif;
   --background-image-aurora: linear-gradient(135deg, var(--aurora-1) 0%, var(--aurora-2) 50%, var(--aurora-3) 100%);
-  --background-image-aurora-text: linear-gradient(100deg, #fff 0%, var(--aurora-1) 30%, var(--aurora-2) 60%, var(--aurora-3) 90%, #fff 110%);
+  --background-image-aurora-text: linear-gradient(100deg, #ffffff 0%, #e9e4ff 25%, var(--aurora-2) 50%, var(--aurora-3) 75%, #ffffff 100%);
   --background-image-app-bg:
     radial-gradient(ellipse 80% 60% at 15% 0%, color-mix(in oklab, var(--aurora-1) 28%, transparent) 0%, transparent 60%),
     radial-gradient(ellipse 70% 50% at 85% 20%, color-mix(in oklab, var(--aurora-2) 22%, transparent) 0%, transparent 60%),
@@ -70,9 +70,9 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 6%);
   --ring: oklch(0.7 0.22 340);
-  --aurora-1: #ff5b8a;     /* coral pink */
-  --aurora-2: #a855f7;     /* violet */
-  --aurora-3: #38bdf8;     /* sky cyan */
+  --aurora-1: #f5d3a0;     /* warm chrome highlight */
+  --aurora-2: #8b5cf6;     /* electric violet */
+  --aurora-3: #22d3ee;     /* iridescent cyan */
   --panel: oklch(0.12 0.02 280);
 }
 

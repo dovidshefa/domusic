@@ -7,7 +7,7 @@ import { lovable } from "@/integrations/lovable/index";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign in — AURORA" },
+      { title: "Sign in — LUMEN" },
       { name: "description", content: "Sign in with Google to save your music library across devices." },
     ],
   }),
@@ -51,8 +51,8 @@ function AuthPage() {
             <Disc3 className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <div className="font-display text-aurora text-2xl leading-none">AURORA</div>
-            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">SOUND · STAGE</div>
+            <div className="font-display text-aurora text-2xl leading-none">LUMEN</div>
+            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">PLAY IN LIGHT</div>
           </div>
         </div>
 
