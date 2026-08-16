@@ -5,8 +5,11 @@ import {
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
+  CheckSquare, Square, CheckCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { UploadPanel } from "@/components/UploadPanel";
+import { useUploadManager } from "@/lib/upload-manager";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -68,7 +71,10 @@ function Index() {
   const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkMenu, setBulkMenu] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(120);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showEq, setShowEq] = useState(false);
@@ -263,59 +269,58 @@ function Index() {
     playTrack(tracks[(idx - 1 + tracks.length) % tracks.length].id);
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!user) return;
+  const upload = useUploadManager({
+    userId: user?.id ?? null,
+    getExisting: useCallback(() => tracksRef.current.map((t) => ({ id: t.id, song: t.song, storage_path: t.storage_path })), []),
+    onAdded: useCallback((t: any) => {
+      setTracks((prev) => [t as Track, ...prev]);
+    }, []),
+    onReplaced: useCallback((trackId: string, src: string, storagePath: string) => {
+      setTracks((prev) => prev.map((x) => (x.id === trackId ? { ...x, src, storage_path: storagePath } : x)));
+    }, []),
+  });
+  const uploading = upload.items.some((i) => i.status === "uploading" || i.status === "queued");
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    setUploading(true);
-
-    const added: Track[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const kind: "audio" | "video" = f.type.startsWith("video") ? "video" : "audio";
-      const ext = f.name.split(".").pop()?.toLowerCase() ?? (kind === "video" ? "mp4" : "mp3");
-      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
-
-      const { error: upErr } = await supabase.storage.from("media").upload(path, f, {
-        cacheControl: "3600", upsert: false, contentType: f.type || undefined,
-      });
-      if (upErr) {
-        console.error("upload failed", upErr);
-        continue;
-      }
-      const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
-      const src = signed?.signedUrl ?? "";
-
-      const cover = `https://picsum.photos/seed/${encodeURIComponent(f.name)}/600/600`;
-      const song = f.name.replace(/\.[^.]+$/, "");
-      const { data: row, error: insErr } = await supabase
-        .from("tracks")
-        .insert({
-          user_id: user.id,
-          song,
-          artist: kind === "video" ? "Music Video" : "Your Upload",
-          album: "Local Files",
-          cover,
-          src,
-          storage_path: path,
-          kind,
-        })
-        .select()
-        .single();
-      if (insErr || !row) {
-        console.error("insert failed", insErr);
-        continue;
-      }
-      added.push({
-        id: row.id, song: row.song, artist: row.artist, album: row.album,
-        cover: row.cover ?? cover, src, storage_path: row.storage_path,
-        kind: row.kind as "audio" | "video", liked: row.liked, duration: row.duration, plays: row.plays,
-      });
-    }
-    setTracks((prev) => [...added, ...prev]);
-    if (added[0]) playTrack(added[0].id);
-    setUploading(false);
     e.target.value = "";
+    upload.addFiles(files);
+  };
+
+  const toggleSelect = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const addManyToPlaylist = async (playlistId: string, trackIds: string[]) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const fresh = trackIds.filter((id) => !pl.trackIds.includes(id));
+    if (fresh.length === 0) { setBulkMenu(false); return; }
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, ...fresh] } : p)));
+    setBulkMenu(false);
+    await supabase.from("playlist_tracks").insert(
+      fresh.map((track_id, i) => ({ playlist_id: playlistId, track_id, position: pl.trackIds.length + i })),
+    );
+  };
+
+  const downloadTracks = async (ids: string[]) => {
+    for (const id of ids) {
+      const t = tracks.find((x) => x.id === id);
+      if (!t) continue;
+      await downloadTrack(t);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  };
+
+  const deleteMany = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} track${ids.length !== 1 ? "s" : ""} from your library?`)) return;
+    const paths = tracks.filter((t) => ids.includes(t.id) && t.storage_path).map((t) => t.storage_path!);
+    setTracks((ts) => ts.filter((x) => !ids.includes(x.id)));
+    setPlaylists((pls) => pls.map((p) => ({ ...p, trackIds: p.trackIds.filter((x) => !ids.includes(x)) })));
+    setSelected([]);
+    if (currentId && ids.includes(currentId)) { setCurrentId(null); setPlaying(false); }
+    await supabase.from("tracks").delete().in("id", ids);
+    if (paths.length) await supabase.storage.from("media").remove(paths);
   };
 
   const toggleLike = async (id: string) => {
