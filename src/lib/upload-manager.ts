@@ -149,7 +149,7 @@ export function useUploadManager(opts: {
       } catch (err: any) {
         if (err?.name === "AbortError") patch(id, { status: "canceled" });
         else patch(id, { status: "error", error: err?.message ?? "Upload failed" });
-        await supabase.storage.from("media").remove([path]).catch?.(() => {});
+        try { await supabase.storage.from("media").remove([path]); } catch {}
       } finally {
         abortsRef.current.delete(id);
         filesRef.current.delete(id);
