@@ -5,8 +5,11 @@ import {
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
+  CheckSquare, Square, CheckCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { UploadPanel } from "@/components/UploadPanel";
+import { useUploadManager } from "@/lib/upload-manager";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -41,6 +44,7 @@ type EditingTrack = { id: string; song: string; artist: string; album: string } 
 
 const RECENT_KEY = "dovid-recent-v1";
 const EQ_KEY = "dovid-eq-v1";
+const SELECTION_KEY = "dovid-selection-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
@@ -68,7 +72,10 @@ function Index() {
   const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkMenu, setBulkMenu] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(120);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showEq, setShowEq] = useState(false);
@@ -183,6 +190,19 @@ function Index() {
     try { localStorage.setItem(EQ_KEY, JSON.stringify({ gains: eqGains, enabled: eqEnabled })); } catch {}
   }, [eqGains, eqEnabled]);
 
+  const tracksRef = useRef<Track[]>([]);
+  useEffect(() => { tracksRef.current = tracks; }, [tracks]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SELECTION_KEY);
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p.ids)) setSelected(p.ids); if (p.mode) setSelectMode(true); }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SELECTION_KEY, JSON.stringify({ ids: selected, mode: selectMode })); } catch {}
+  }, [selected, selectMode]);
+
   const current = tracks.find((t) => t.id === currentId) ?? null;
   const display = current ?? {
     id: "_empty", song: "Nothing playing", artist: "Upload a song or music video to start",
@@ -263,59 +283,58 @@ function Index() {
     playTrack(tracks[(idx - 1 + tracks.length) % tracks.length].id);
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!user) return;
+  const upload = useUploadManager({
+    userId: user?.id ?? null,
+    getExisting: useCallback(() => tracksRef.current.map((t) => ({ id: t.id, song: t.song, storage_path: t.storage_path })), []),
+    onAdded: useCallback((t: any) => {
+      setTracks((prev) => [t as Track, ...prev]);
+    }, []),
+    onReplaced: useCallback((trackId: string, src: string, storagePath: string) => {
+      setTracks((prev) => prev.map((x) => (x.id === trackId ? { ...x, src, storage_path: storagePath } : x)));
+    }, []),
+  });
+  const uploading = upload.items.some((i) => i.status === "uploading" || i.status === "queued");
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    setUploading(true);
-
-    const added: Track[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const kind: "audio" | "video" = f.type.startsWith("video") ? "video" : "audio";
-      const ext = f.name.split(".").pop()?.toLowerCase() ?? (kind === "video" ? "mp4" : "mp3");
-      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
-
-      const { error: upErr } = await supabase.storage.from("media").upload(path, f, {
-        cacheControl: "3600", upsert: false, contentType: f.type || undefined,
-      });
-      if (upErr) {
-        console.error("upload failed", upErr);
-        continue;
-      }
-      const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
-      const src = signed?.signedUrl ?? "";
-
-      const cover = `https://picsum.photos/seed/${encodeURIComponent(f.name)}/600/600`;
-      const song = f.name.replace(/\.[^.]+$/, "");
-      const { data: row, error: insErr } = await supabase
-        .from("tracks")
-        .insert({
-          user_id: user.id,
-          song,
-          artist: kind === "video" ? "Music Video" : "Your Upload",
-          album: "Local Files",
-          cover,
-          src,
-          storage_path: path,
-          kind,
-        })
-        .select()
-        .single();
-      if (insErr || !row) {
-        console.error("insert failed", insErr);
-        continue;
-      }
-      added.push({
-        id: row.id, song: row.song, artist: row.artist, album: row.album,
-        cover: row.cover ?? cover, src, storage_path: row.storage_path,
-        kind: row.kind as "audio" | "video", liked: row.liked, duration: row.duration, plays: row.plays,
-      });
-    }
-    setTracks((prev) => [...added, ...prev]);
-    if (added[0]) playTrack(added[0].id);
-    setUploading(false);
     e.target.value = "";
+    upload.addFiles(files);
+  };
+
+  const toggleSelect = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const addManyToPlaylist = async (playlistId: string, trackIds: string[]) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const fresh = trackIds.filter((id) => !pl.trackIds.includes(id));
+    if (fresh.length === 0) { setBulkMenu(false); return; }
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, ...fresh] } : p)));
+    setBulkMenu(false);
+    await supabase.from("playlist_tracks").insert(
+      fresh.map((track_id, i) => ({ playlist_id: playlistId, track_id, position: pl.trackIds.length + i })),
+    );
+  };
+
+  const downloadTracks = async (ids: string[]) => {
+    for (const id of ids) {
+      const t = tracks.find((x) => x.id === id);
+      if (!t) continue;
+      await downloadTrack(t);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  };
+
+  const deleteMany = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} track${ids.length !== 1 ? "s" : ""} from your library?`)) return;
+    const paths = tracks.filter((t) => ids.includes(t.id) && t.storage_path).map((t) => t.storage_path!);
+    setTracks((ts) => ts.filter((x) => !ids.includes(x.id)));
+    setPlaylists((pls) => pls.map((p) => ({ ...p, trackIds: p.trackIds.filter((x) => !ids.includes(x)) })));
+    setSelected([]);
+    if (currentId && ids.includes(currentId)) { setCurrentId(null); setPlaying(false); }
+    await supabase.from("tracks").delete().in("id", ids);
+    if (paths.length) await supabase.storage.from("media").remove(paths);
   };
 
   const toggleLike = async (id: string) => {
@@ -518,14 +537,13 @@ function Index() {
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
-  const downloadCurrent = async () => {
-    if (!current) return;
+  const downloadTrack = async (t: Track) => {
     try {
-      let url = current.src;
-      let filename = `${current.song}.${current.kind === "video" ? "mp4" : "mp3"}`;
-      if (current.storage_path) {
+      let url = t.src;
+      const filename = `${t.song}.${t.kind === "video" ? "mp4" : "mp3"}`;
+      if (t.storage_path) {
         const { data } = await supabase.storage.from("media").createSignedUrl(
-          current.storage_path, 60 * 10, { download: filename }
+          t.storage_path, 60 * 10, { download: filename }
         );
         if (data?.signedUrl) url = data.signedUrl;
       }
@@ -533,6 +551,10 @@ function Index() {
       a.href = url; a.download = filename; a.rel = "noopener";
       document.body.appendChild(a); a.click(); a.remove();
     } catch (e) { console.error(e); }
+  };
+
+  const downloadCurrent = async () => {
+    if (current) await downloadTrack(current);
   };
 
   // ---- Web Audio Equalizer (works for any output device incl. Bluetooth) ----
@@ -855,17 +877,90 @@ function Index() {
             </div>
           </div>
 
-          <div className="mb-6 flex items-end justify-between">
+          <UploadPanel
+            items={upload.items}
+            onCancel={upload.cancel}
+            onCancelAll={upload.cancelAll}
+            onResolveDuplicate={upload.resolveDuplicate}
+            onClearFinished={upload.clearFinished}
+          />
+
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-3xl md:text-4xl">{headerTitle}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{filtered.length} tracks</p>
             </div>
-            {view.type === "library" && (
-              <button onClick={createPlaylist} className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2 text-xs font-semibold hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]">
-                <Plus className="h-3.5 w-3.5" /> New Playlist
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {view.type !== "artists" && (
+                <button
+                  onClick={() => { setSelectMode((s) => !s); setSelected([]); setBulkMenu(false); }}
+                  className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    selectMode ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/10 text-[var(--aurora-2)]" : "border-border bg-secondary/60 hover:border-[var(--aurora-2)]/40"
+                  }`}>
+                  <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? "Done" : "Select"}
+                </button>
+              )}
+              {view.type === "library" && (
+                <button onClick={createPlaylist} className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2 text-xs font-semibold hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]">
+                  <Plus className="h-3.5 w-3.5" /> New Playlist
+                </button>
+              )}
+            </div>
           </div>
+
+          {selectMode && view.type !== "artists" && (
+            <div className="sticky top-0 z-30 mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--aurora-2)]/30 bg-panel/90 px-4 py-3 backdrop-blur-xl">
+              <span className="text-xs font-bold">{selected.length} selected</span>
+              <button onClick={() => setSelected(filtered.map((t) => t.id))} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-2)]">
+                <CheckCheck className="h-3.5 w-3.5" /> Select all
+              </button>
+              <button onClick={() => setSelected([])} className="rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                Clear
+              </button>
+              <div className="relative">
+                <button onClick={() => setBulkMenu((b) => !b)} disabled={selected.length === 0}
+                  className="bg-aurora flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-bold text-primary-foreground disabled:opacity-40">
+                  <ListPlus className="h-3.5 w-3.5" /> Add to playlist
+                </button>
+                {bulkMenu && (
+                  <div className="absolute left-0 top-10 z-40 w-56 overflow-hidden rounded-xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
+                    <div className="border-b border-border px-3 py-2 text-[10px] font-bold tracking-widest text-muted-foreground">
+                      ADD {selected.length} TRACK{selected.length !== 1 ? "S" : ""} TO
+                    </div>
+                    <div className="max-h-56 overflow-y-auto">
+                      {playlists.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No playlists yet.</div>}
+                      {playlists.map((p) => (
+                        <button key={p.id} onClick={() => addManyToPlaylist(p.id, selected)}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-secondary">
+                          <span className="truncate">{p.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{p.trackIds.length}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => { setBulkMenu(false); createPlaylist(); }} className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs text-[var(--aurora-2)] hover:bg-secondary">
+                      <Plus className="h-3 w-3" /> New playlist
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button onClick={() => downloadTracks(selected)} disabled={selected.length === 0}
+                className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-2)] disabled:opacity-40">
+                <Download className="h-3.5 w-3.5" /> Download
+              </button>
+              {view.type === "playlist" ? (
+                <button onClick={() => { selected.forEach((id) => removeFromPlaylist((view as any).id, id)); setSelected([]); }} disabled={selected.length === 0}
+                  className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-1)] disabled:opacity-40">
+                  <X className="h-3.5 w-3.5" /> Remove
+                </button>
+              ) : (
+                <button onClick={() => deleteMany(selected)} disabled={selected.length === 0}
+                  className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-1)] disabled:opacity-40">
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              )}
+            </div>
+          )}
+
 
           <input ref={artistAvatarFileRef} type="file" accept="image/*" className="hidden" onChange={handleArtistAvatarFile} />
 
