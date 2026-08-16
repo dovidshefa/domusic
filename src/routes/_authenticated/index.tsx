@@ -44,6 +44,7 @@ type EditingTrack = { id: string; song: string; artist: string; album: string } 
 
 const RECENT_KEY = "dovid-recent-v1";
 const EQ_KEY = "dovid-eq-v1";
+const SELECTION_KEY = "dovid-selection-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
@@ -188,6 +189,19 @@ function Index() {
   useEffect(() => {
     try { localStorage.setItem(EQ_KEY, JSON.stringify({ gains: eqGains, enabled: eqEnabled })); } catch {}
   }, [eqGains, eqEnabled]);
+
+  const tracksRef = useRef<Track[]>([]);
+  useEffect(() => { tracksRef.current = tracks; }, [tracks]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SELECTION_KEY);
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p.ids)) setSelected(p.ids); if (p.mode) setSelectMode(true); }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SELECTION_KEY, JSON.stringify({ ids: selected, mode: selectMode })); } catch {}
+  }, [selected, selectMode]);
 
   const current = tracks.find((t) => t.id === currentId) ?? null;
   const display = current ?? {
@@ -523,14 +537,13 @@ function Index() {
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
-  const downloadCurrent = async () => {
-    if (!current) return;
+  const downloadTrack = async (t: Track) => {
     try {
-      let url = current.src;
-      let filename = `${current.song}.${current.kind === "video" ? "mp4" : "mp3"}`;
-      if (current.storage_path) {
+      let url = t.src;
+      const filename = `${t.song}.${t.kind === "video" ? "mp4" : "mp3"}`;
+      if (t.storage_path) {
         const { data } = await supabase.storage.from("media").createSignedUrl(
-          current.storage_path, 60 * 10, { download: filename }
+          t.storage_path, 60 * 10, { download: filename }
         );
         if (data?.signedUrl) url = data.signedUrl;
       }
@@ -538,6 +551,10 @@ function Index() {
       a.href = url; a.download = filename; a.rel = "noopener";
       document.body.appendChild(a); a.click(); a.remove();
     } catch (e) { console.error(e); }
+  };
+
+  const downloadCurrent = async () => {
+    if (current) await downloadTrack(current);
   };
 
   // ---- Web Audio Equalizer (works for any output device incl. Bluetooth) ----
