@@ -129,11 +129,14 @@ export type Database = {
           cover: string | null
           created_at: string
           duration: number | null
+          genre: string | null
           id: string
+          is_public: boolean
           kind: string
           liked: boolean
           plays: number
           song: string
+          source_track_id: string | null
           src: string
           storage_path: string | null
           user_id: string
@@ -144,11 +147,14 @@ export type Database = {
           cover?: string | null
           created_at?: string
           duration?: number | null
+          genre?: string | null
           id?: string
+          is_public?: boolean
           kind?: string
           liked?: boolean
           plays?: number
           song: string
+          source_track_id?: string | null
           src: string
           storage_path?: string | null
           user_id: string
@@ -159,23 +165,65 @@ export type Database = {
           cover?: string | null
           created_at?: string
           duration?: number | null
+          genre?: string | null
           id?: string
+          is_public?: boolean
           kind?: string
           liked?: boolean
           plays?: number
           song?: string
+          source_track_id?: string | null
           src?: string
           storage_path?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tracks_source_track_id_fkey"
+            columns: ["source_track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      browse_public_tracks: {
+        Args: {
+          _genre?: string
+          _kind?: string
+          _limit?: number
+          _offset?: number
+          _search?: string
+          _sort?: string
+        }
+        Returns: {
+          album: string
+          artist: string
+          cover: string
+          created_at: string
+          duration: number
+          genre: string
+          id: string
+          kind: string
+          plays: number
+          song: string
+          storage_path: string
+          uploader_id: string
+          uploader_name: string
+        }[]
+      }
+      public_track_genres: {
+        Args: never
+        Returns: {
+          genre: string
+          track_count: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
