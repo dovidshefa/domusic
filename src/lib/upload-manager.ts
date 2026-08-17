@@ -30,6 +30,9 @@ export type UploadedTrack = {
   liked: boolean;
   duration: number | null;
   plays: number;
+  is_public: boolean;
+  genre: string | null;
+  source_track_id: string | null;
 };
 
 type ExistingTrack = { id: string; song: string; storage_path: string | null };
@@ -72,8 +75,10 @@ export function useUploadManager(opts: {
   getExisting: () => ExistingTrack[];
   onAdded: (t: UploadedTrack) => void;
   onReplaced: (trackId: string, src: string, storagePath: string) => void;
+  /** visibility + category applied to new uploads */
+  getUploadMeta?: () => { isPublic: boolean; genre: string | null };
 }) {
-  const { userId, getExisting, onAdded, onReplaced } = opts;
+  const { userId, getExisting, onAdded, onReplaced, getUploadMeta } = opts;
   const [items, setItems] = useState<UploadItem[]>([]);
   const filesRef = useRef<Map<string, File>>(new Map());
   const abortsRef = useRef<Map<string, AbortController>>(new Map());
@@ -114,6 +119,7 @@ export function useUploadManager(opts: {
           if (old?.storage_path) await supabase.storage.from("media").remove([old.storage_path]);
           replaceRef.current.delete(id);
         } else {
+          const meta = getUploadMeta?.() ?? { isPublic: false, genre: null };
           const song = file.name.replace(/\.[^.]+$/, "");
           const cover = `https://picsum.photos/seed/${encodeURIComponent(file.name)}/600/600`;
           const { data: row, error } = await supabase
@@ -127,6 +133,8 @@ export function useUploadManager(opts: {
               src,
               storage_path: path,
               kind,
+              is_public: meta.isPublic,
+              genre: meta.genre,
             })
             .select()
             .single();
@@ -143,6 +151,9 @@ export function useUploadManager(opts: {
             liked: row.liked,
             duration: row.duration,
             plays: row.plays,
+            is_public: row.is_public,
+            genre: row.genre,
+            source_track_id: row.source_track_id,
           });
         }
         patch(id, { status: "done", progress: 100 });
@@ -155,7 +166,7 @@ export function useUploadManager(opts: {
         filesRef.current.delete(id);
       }
     },
-    [userId, patch, getExisting, onAdded, onReplaced],
+    [userId, patch, getExisting, onAdded, onReplaced, getUploadMeta],
   );
 
   const pump = useCallback(() => {
