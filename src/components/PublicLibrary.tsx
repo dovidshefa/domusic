@@ -49,12 +49,15 @@ export function PublicLibrary(props: {
   onAdd: (pt: PublicTrack, opts?: { play?: boolean }) => Promise<void>;
   onAddToPlaylist: (playlistId: string, pt: PublicTrack) => Promise<void>;
   onCreatePlaylist: () => void;
+  fixedKind?: "audio" | "video";
+  title?: string;
+  subtitle?: string;
 }) {
-  const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onCreatePlaylist } = props;
+  const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onCreatePlaylist, fixedKind, title, subtitle } = props;
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [sort, setSort] = useState("recent");
-  const [kind, setKind] = useState("all");
+  const [kind, setKind] = useState<string>(fixedKind ?? "all");
   const [genre, setGenre] = useState("all");
   const [rows, setRows] = useState<PublicTrack[]>([]);
   const [genres, setGenres] = useState<{ genre: string; track_count: number }[]>([]);
@@ -64,6 +67,8 @@ export function PublicLibrary(props: {
   const [busy, setBusy] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
   const reqRef = useRef(0);
+
+  useEffect(() => { if (fixedKind) setKind(fixedKind); }, [fixedKind]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
@@ -117,9 +122,9 @@ export function PublicLibrary(props: {
             <Globe2 className="h-6 w-6 text-primary-foreground" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-2xl leading-none md:text-3xl">Community Library</h2>
+            <h2 className="font-display text-2xl leading-none md:text-3xl">{title ?? "Community Library"}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {total} public track{total !== 1 ? "s" : ""} shared by DoMusic listeners · add any of them to your own songs
+              {subtitle ?? `${total} public track${total !== 1 ? "s" : ""} shared by DoMusic listeners · add any of them to your own songs`}
             </p>
           </div>
         </div>
@@ -135,7 +140,7 @@ export function PublicLibrary(props: {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {KINDS.map((k) => (
+            {!fixedKind && KINDS.map((k) => (
               <button key={k.key} onClick={() => setKind(k.key)}
                 className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11px] font-semibold transition ${
                   kind === k.key ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/10 text-[var(--aurora-2)]" : "border-border bg-secondary/60 text-muted-foreground hover:text-foreground"
