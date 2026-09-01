@@ -296,8 +296,95 @@ function Index() {
     onReplaced: useCallback((trackId: string, src: string, storagePath: string) => {
       setTracks((prev) => prev.map((x) => (x.id === trackId ? { ...x, src, storage_path: storagePath } : x)));
     }, []),
+    getUploadMeta: useCallback(() => uploadMetaRef.current, []),
   });
   const uploading = upload.items.some((i) => i.status === "uploading" || i.status === "queued");
+
+  // ---- Community library (public uploads) ----
+  const savedSourceIds = useMemo(() => {
+    const s = new Set<string>();
+    tracks.forEach((t) => {
+      if (t.source_track_id) s.add(t.source_track_id);
+      s.add(t.id);
+    });
+    return s;
+  }, [tracks]);
+
+  const addFromPublic = useCallback(
+    async (pt: PublicTrack, opts?: { play?: boolean }): Promise<string | null> => {
+      if (!user) return null;
+      const existing = tracksRef.current.find((t) => t.source_track_id === pt.id || t.id === pt.id);
+      if (existing) {
+        if (opts?.play) playTrack(existing.id);
+        return existing.id;
+      }
+      let src = "";
+      if (pt.storage_path) {
+        const { data } = await supabase.storage.from("media").createSignedUrl(pt.storage_path, SIGNED_URL_TTL);
+        src = data?.signedUrl ?? "";
+      }
+      const { data: row, error } = await supabase
+        .from("tracks")
+        .insert({
+          user_id: user.id,
+          song: pt.song,
+          artist: pt.artist,
+          album: pt.album,
+          cover: pt.cover,
+          src,
+          storage_path: pt.storage_path,
+          kind: pt.kind,
+          duration: pt.duration,
+          genre: pt.genre,
+          is_public: false,
+          source_track_id: pt.id,
+        })
+        .select()
+        .single();
+      if (error || !row) return null;
+      const track: Track = {
+        id: row.id,
+        song: row.song,
+        artist: row.artist,
+        album: row.album,
+        cover: row.cover ?? `https://picsum.photos/seed/${encodeURIComponent(row.song)}/600/600`,
+        src,
+        storage_path: row.storage_path,
+        kind: row.kind as "audio" | "video",
+        liked: row.liked,
+        duration: row.duration,
+        plays: row.plays,
+        is_public: !!row.is_public,
+        genre: row.genre ?? null,
+        source_track_id: row.source_track_id ?? null,
+      };
+      setTracks((prev) => [track, ...prev]);
+      tracksRef.current = [track, ...tracksRef.current];
+      if (opts?.play) playTrack(track.id);
+      return track.id;
+    },
+    [user, playTrack],
+  );
+
+  const addPublicToPlaylist = useCallback(
+    async (playlistId: string, pt: PublicTrack) => {
+      const trackId = await addFromPublic(pt);
+      if (!trackId) return;
+      const pl = playlistsRef.current.find((p) => p.id === playlistId);
+      if (!pl || pl.trackIds.includes(trackId)) return;
+      setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, trackId] } : p)));
+      await supabase.from("playlist_tracks").insert({ playlist_id: playlistId, track_id: trackId, position: pl.trackIds.length });
+    },
+    [addFromPublic],
+  );
+
+  const toggleTrackPublic = async (id: string) => {
+    const t = tracks.find((x) => x.id === id);
+    if (!t) return;
+    const nv = !t.is_public;
+    setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, is_public: nv } : x)));
+    await supabase.from("tracks").update({ is_public: nv }).eq("id", id);
+  };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
