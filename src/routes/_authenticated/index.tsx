@@ -746,6 +746,7 @@ function Index() {
     { key: "public-songs", icon: Globe2, label: "Public Songs" },
   ];
 
+  const isPublicView = view.type === "public-videos" || view.type === "public-songs";
   const progressPct = duration ? (progress / duration) * 100 : 0;
   const headerTitle =
     view.type === "library" ? "Your Library" :
@@ -1028,10 +1029,10 @@ function Index() {
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-3xl md:text-4xl">{headerTitle}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{filtered.length} tracks</p>
+              <p className="mt-1 text-xs text-muted-foreground">{isPublicView ? "Shared by the DoMusic community" : `${filtered.length} tracks`}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {view.type !== "artists" && (
+              {view.type !== "artists" && !isPublicView && (
                 <button
                   onClick={() => { setSelectMode((s) => !s); setSelected([]); setBulkMenu(false); }}
                   className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition ${
@@ -1048,7 +1049,7 @@ function Index() {
             </div>
           </div>
 
-          {selectMode && view.type !== "artists" && (
+          {selectMode && view.type !== "artists" && !isPublicView && (
             <div className="sticky top-0 z-30 mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--aurora-2)]/30 bg-panel/90 px-4 py-3 backdrop-blur-xl">
               <span className="text-xs font-bold">{selected.length} selected</span>
               <button onClick={() => setSelected(filtered.map((t) => t.id))} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-2)]">
@@ -1135,7 +1136,21 @@ function Index() {
             </div>
           )}
 
-          {loading ? (
+          {isPublicView ? (
+            <PublicLibrary
+              myId={user?.id ?? null}
+              savedSourceIds={savedSourceIds}
+              playlists={playlists}
+              onAdd={async (pt, opts) => { await addFromPublic(pt, opts); }}
+              onAddToPlaylist={addPublicToPlaylist}
+              onCreatePlaylist={createPlaylist}
+              fixedKind={view.type === "public-videos" ? "video" : "audio"}
+              title={view.type === "public-videos" ? "Public Videos" : "Public Songs"}
+              subtitle={view.type === "public-videos"
+                ? "Music videos shared publicly by DoMusic members — play them or add them to your own library and playlists"
+                : "Songs shared publicly by DoMusic members — play them or add them to your own library and playlists"}
+            />
+          ) : loading ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
           ) : view.type === "artists" ? (
             artistGroups.length === 0 ? (
