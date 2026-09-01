@@ -158,6 +158,7 @@ function Index() {
             cover: t.cover ?? `https://picsum.photos/seed/${encodeURIComponent(t.song)}/600/600`,
             src, storage_path: t.storage_path, kind: t.kind, liked: t.liked,
             duration: t.duration, plays: t.plays,
+            is_public: !!t.is_public, genre: t.genre ?? null, source_track_id: t.source_track_id ?? null,
           } as Track;
         })
       );
