@@ -33,11 +33,14 @@ type Track = {
   liked: boolean;
   duration: number | null;
   plays: number;
+  is_public: boolean;
+  genre: string | null;
+  source_track_id: string | null;
 };
 
 type Playlist = { id: string; name: string; trackIds: string[] };
 type View =
-  | { type: "library" | "favorites" | "recent" | "trending" | "artists" }
+  | { type: "library" | "favorites" | "recent" | "trending" | "artists" | "public-videos" | "public-songs" }
   | { type: "playlist"; id: string }
   | { type: "artist"; name: string };
 type EditingTrack = { id: string; song: string; artist: string; album: string } | null;
