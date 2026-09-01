@@ -211,7 +211,7 @@ function Index() {
   const display = current ?? {
     id: "_empty", song: "Nothing playing", artist: "Upload a song or music video to start",
     album: "", cover: "", src: "", storage_path: null, kind: "audio" as const, liked: false,
-    duration: null, plays: 0,
+    duration: null, plays: 0, is_public: false, genre: null, source_track_id: null,
   };
   const isVideo = current?.kind === "video";
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
