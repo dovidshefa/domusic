@@ -736,12 +736,14 @@ function Index() {
     navigate({ to: "/auth" });
   };
 
-  const navItems: { key: "library" | "favorites" | "recent" | "trending" | "artists"; icon: typeof Heart; label: string; count?: number }[] = [
+  const navItems: { key: "library" | "favorites" | "recent" | "trending" | "artists" | "public-videos" | "public-songs"; icon: typeof Heart; label: string; count?: number }[] = [
     { key: "library", icon: Music2, label: "Library", count: tracks.length },
     { key: "favorites", icon: Heart, label: "Favorites", count: tracks.filter((t) => t.liked).length },
     { key: "recent", icon: Clock, label: "Recently Played", count: recent.length },
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
     { key: "artists", icon: UserIcon, label: "Artists", count: artistGroups.length },
+    { key: "public-videos", icon: Video, label: "Public Videos" },
+    { key: "public-songs", icon: Globe2, label: "Public Songs" },
   ];
 
   const progressPct = duration ? (progress / duration) * 100 : 0;
@@ -751,6 +753,8 @@ function Index() {
     view.type === "recent" ? "Recently Played" :
     view.type === "trending" ? "Trending Now" :
     view.type === "artists" ? "Artists" :
+    view.type === "public-videos" ? "Public Videos" :
+    view.type === "public-songs" ? "Public Songs" :
     view.type === "artist" ? view.name :
     activePlaylist?.name ?? "Playlist";
 
@@ -797,6 +801,30 @@ function Index() {
           <span className="text-sm tracking-wide">{uploading ? "UPLOADING…" : "UPLOAD MUSIC / VIDEO"}</span>
           <input ref={fileRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
+
+        <div className="mb-6 -mt-4 rounded-2xl border border-border bg-secondary/40 p-3">
+          <div className="mb-2 text-[10px] font-semibold tracking-[0.2em] text-muted-foreground">NEW UPLOADS ARE</div>
+          <div className="flex gap-2">
+            <button onClick={() => setUploadPublic(false)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
+                !uploadPublic ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/10 text-[var(--aurora-2)]" : "border-border text-muted-foreground hover:text-foreground"
+              }`}>
+              <Lock className="h-3.5 w-3.5" /> Private
+            </button>
+            <button onClick={() => setUploadPublic(true)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
+                uploadPublic ? "border-[var(--aurora-1)] bg-[var(--aurora-1)]/10 text-[var(--aurora-1)]" : "border-border text-muted-foreground hover:text-foreground"
+              }`}>
+              <Globe2 className="h-3.5 w-3.5" /> Public
+            </button>
+          </div>
+          <input value={uploadGenre} onChange={(e) => setUploadGenre(e.target.value)}
+            placeholder="Category / genre (optional)"
+            className="mt-2 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-[11px] placeholder:text-muted-foreground focus:border-[var(--aurora-2)]/50 focus:outline-none" />
+          <div className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            {uploadPublic ? "Public uploads appear in Public Videos / Public Songs for everyone." : "Private uploads stay visible only to you."}
+          </div>
+        </div>
 
         <div className="mb-2 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">BROWSE</div>
         <nav className="flex flex-col gap-1.5">
