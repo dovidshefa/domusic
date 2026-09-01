@@ -5,11 +5,12 @@ import {
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
-  CheckSquare, Square, CheckCheck,
+  CheckSquare, Square, CheckCheck, Video, Globe2, Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { UploadPanel } from "@/components/UploadPanel";
 import { useUploadManager } from "@/lib/upload-manager";
+import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -33,11 +34,14 @@ type Track = {
   liked: boolean;
   duration: number | null;
   plays: number;
+  is_public: boolean;
+  genre: string | null;
+  source_track_id: string | null;
 };
 
 type Playlist = { id: string; name: string; trackIds: string[] };
 type View =
-  | { type: "library" | "favorites" | "recent" | "trending" | "artists" }
+  | { type: "library" | "favorites" | "recent" | "trending" | "artists" | "public-videos" | "public-songs" }
   | { type: "playlist"; id: string }
   | { type: "artist"; name: string };
 type EditingTrack = { id: string; song: string; artist: string; album: string } | null;
@@ -45,6 +49,7 @@ type EditingTrack = { id: string; song: string; artist: string; album: string } 
 const RECENT_KEY = "dovid-recent-v1";
 const EQ_KEY = "dovid-eq-v1";
 const SELECTION_KEY = "dovid-selection-v1";
+const UPLOAD_META_KEY = "dovid-upload-meta-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
@@ -99,6 +104,8 @@ function Index() {
   const [artistAvatars, setArtistAvatars] = useState<Record<string, string>>({});
   const artistAvatarFileRef = useRef<HTMLInputElement>(null);
   const [editingArtistAvatar, setEditingArtistAvatar] = useState<string | null>(null);
+  const [uploadPublic, setUploadPublic] = useState(false);
+  const [uploadGenre, setUploadGenre] = useState("");
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -155,6 +162,7 @@ function Index() {
             cover: t.cover ?? `https://picsum.photos/seed/${encodeURIComponent(t.song)}/600/600`,
             src, storage_path: t.storage_path, kind: t.kind, liked: t.liked,
             duration: t.duration, plays: t.plays,
+            is_public: !!t.is_public, genre: t.genre ?? null, source_track_id: t.source_track_id ?? null,
           } as Track;
         })
       );
@@ -192,6 +200,23 @@ function Index() {
 
   const tracksRef = useRef<Track[]>([]);
   useEffect(() => { tracksRef.current = tracks; }, [tracks]);
+  const playlistsRef = useRef<Playlist[]>([]);
+  useEffect(() => { playlistsRef.current = playlists; }, [playlists]);
+  const uploadMetaRef = useRef<{ isPublic: boolean; genre: string | null }>({ isPublic: false, genre: null });
+  useEffect(() => { uploadMetaRef.current = { isPublic: uploadPublic, genre: uploadGenre.trim() || null }; }, [uploadPublic, uploadGenre]);
+  useEffect(() => {
+    try { localStorage.setItem(UPLOAD_META_KEY, JSON.stringify({ isPublic: uploadPublic, genre: uploadGenre })); } catch {}
+  }, [uploadPublic, uploadGenre]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(UPLOAD_META_KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p.isPublic === "boolean") setUploadPublic(p.isPublic);
+        if (typeof p.genre === "string") setUploadGenre(p.genre);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
@@ -207,7 +232,7 @@ function Index() {
   const display = current ?? {
     id: "_empty", song: "Nothing playing", artist: "Upload a song or music video to start",
     album: "", cover: "", src: "", storage_path: null, kind: "audio" as const, liked: false,
-    duration: null, plays: 0,
+    duration: null, plays: 0, is_public: false, genre: null, source_track_id: null,
   };
   const isVideo = current?.kind === "video";
   const activePlaylist = view.type === "playlist" ? playlists.find((p) => p.id === view.id) : null;
@@ -292,8 +317,95 @@ function Index() {
     onReplaced: useCallback((trackId: string, src: string, storagePath: string) => {
       setTracks((prev) => prev.map((x) => (x.id === trackId ? { ...x, src, storage_path: storagePath } : x)));
     }, []),
+    getUploadMeta: useCallback(() => uploadMetaRef.current, []),
   });
   const uploading = upload.items.some((i) => i.status === "uploading" || i.status === "queued");
+
+  // ---- Community library (public uploads) ----
+  const savedSourceIds = useMemo(() => {
+    const s = new Set<string>();
+    tracks.forEach((t) => {
+      if (t.source_track_id) s.add(t.source_track_id);
+      s.add(t.id);
+    });
+    return s;
+  }, [tracks]);
+
+  const addFromPublic = useCallback(
+    async (pt: PublicTrack, opts?: { play?: boolean }): Promise<string | null> => {
+      if (!user) return null;
+      const existing = tracksRef.current.find((t) => t.source_track_id === pt.id || t.id === pt.id);
+      if (existing) {
+        if (opts?.play) playTrack(existing.id);
+        return existing.id;
+      }
+      let src = "";
+      if (pt.storage_path) {
+        const { data } = await supabase.storage.from("media").createSignedUrl(pt.storage_path, SIGNED_URL_TTL);
+        src = data?.signedUrl ?? "";
+      }
+      const { data: row, error } = await supabase
+        .from("tracks")
+        .insert({
+          user_id: user.id,
+          song: pt.song,
+          artist: pt.artist,
+          album: pt.album,
+          cover: pt.cover,
+          src,
+          storage_path: pt.storage_path,
+          kind: pt.kind,
+          duration: pt.duration,
+          genre: pt.genre,
+          is_public: false,
+          source_track_id: pt.id,
+        })
+        .select()
+        .single();
+      if (error || !row) return null;
+      const track: Track = {
+        id: row.id,
+        song: row.song,
+        artist: row.artist,
+        album: row.album,
+        cover: row.cover ?? `https://picsum.photos/seed/${encodeURIComponent(row.song)}/600/600`,
+        src,
+        storage_path: row.storage_path,
+        kind: row.kind as "audio" | "video",
+        liked: row.liked,
+        duration: row.duration,
+        plays: row.plays,
+        is_public: !!row.is_public,
+        genre: row.genre ?? null,
+        source_track_id: row.source_track_id ?? null,
+      };
+      setTracks((prev) => [track, ...prev]);
+      tracksRef.current = [track, ...tracksRef.current];
+      if (opts?.play) playTrack(track.id);
+      return track.id;
+    },
+    [user, playTrack],
+  );
+
+  const addPublicToPlaylist = useCallback(
+    async (playlistId: string, pt: PublicTrack) => {
+      const trackId = await addFromPublic(pt);
+      if (!trackId) return;
+      const pl = playlistsRef.current.find((p) => p.id === playlistId);
+      if (!pl || pl.trackIds.includes(trackId)) return;
+      setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, trackId] } : p)));
+      await supabase.from("playlist_tracks").insert({ playlist_id: playlistId, track_id: trackId, position: pl.trackIds.length });
+    },
+    [addFromPublic],
+  );
+
+  const toggleTrackPublic = async (id: string) => {
+    const t = tracks.find((x) => x.id === id);
+    if (!t) return;
+    const nv = !t.is_public;
+    setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, is_public: nv } : x)));
+    await supabase.from("tracks").update({ is_public: nv }).eq("id", id);
+  };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -624,14 +736,17 @@ function Index() {
     navigate({ to: "/auth" });
   };
 
-  const navItems: { key: "library" | "favorites" | "recent" | "trending" | "artists"; icon: typeof Heart; label: string; count?: number }[] = [
+  const navItems: { key: "library" | "favorites" | "recent" | "trending" | "artists" | "public-videos" | "public-songs"; icon: typeof Heart; label: string; count?: number }[] = [
     { key: "library", icon: Music2, label: "Library", count: tracks.length },
     { key: "favorites", icon: Heart, label: "Favorites", count: tracks.filter((t) => t.liked).length },
     { key: "recent", icon: Clock, label: "Recently Played", count: recent.length },
     { key: "trending", icon: Flame, label: "Trending", count: tracks.length },
     { key: "artists", icon: UserIcon, label: "Artists", count: artistGroups.length },
+    { key: "public-videos", icon: Video, label: "Public Videos" },
+    { key: "public-songs", icon: Globe2, label: "Public Songs" },
   ];
 
+  const isPublicView = view.type === "public-videos" || view.type === "public-songs";
   const progressPct = duration ? (progress / duration) * 100 : 0;
   const headerTitle =
     view.type === "library" ? "Your Library" :
@@ -639,6 +754,8 @@ function Index() {
     view.type === "recent" ? "Recently Played" :
     view.type === "trending" ? "Trending Now" :
     view.type === "artists" ? "Artists" :
+    view.type === "public-videos" ? "Public Videos" :
+    view.type === "public-songs" ? "Public Songs" :
     view.type === "artist" ? view.name :
     activePlaylist?.name ?? "Playlist";
 
@@ -685,6 +802,30 @@ function Index() {
           <span className="text-sm tracking-wide">{uploading ? "UPLOADING…" : "UPLOAD MUSIC / VIDEO"}</span>
           <input ref={fileRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
+
+        <div className="mb-6 -mt-4 rounded-2xl border border-border bg-secondary/40 p-3">
+          <div className="mb-2 text-[10px] font-semibold tracking-[0.2em] text-muted-foreground">NEW UPLOADS ARE</div>
+          <div className="flex gap-2">
+            <button onClick={() => setUploadPublic(false)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
+                !uploadPublic ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/10 text-[var(--aurora-2)]" : "border-border text-muted-foreground hover:text-foreground"
+              }`}>
+              <Lock className="h-3.5 w-3.5" /> Private
+            </button>
+            <button onClick={() => setUploadPublic(true)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
+                uploadPublic ? "border-[var(--aurora-1)] bg-[var(--aurora-1)]/10 text-[var(--aurora-1)]" : "border-border text-muted-foreground hover:text-foreground"
+              }`}>
+              <Globe2 className="h-3.5 w-3.5" /> Public
+            </button>
+          </div>
+          <input value={uploadGenre} onChange={(e) => setUploadGenre(e.target.value)}
+            placeholder="Category / genre (optional)"
+            className="mt-2 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-[11px] placeholder:text-muted-foreground focus:border-[var(--aurora-2)]/50 focus:outline-none" />
+          <div className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            {uploadPublic ? "Public uploads appear in Public Videos / Public Songs for everyone." : "Private uploads stay visible only to you."}
+          </div>
+        </div>
 
         <div className="mb-2 px-2 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">BROWSE</div>
         <nav className="flex flex-col gap-1.5">
@@ -888,10 +1029,10 @@ function Index() {
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-3xl md:text-4xl">{headerTitle}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{filtered.length} tracks</p>
+              <p className="mt-1 text-xs text-muted-foreground">{isPublicView ? "Shared by the DoMusic community" : `${filtered.length} tracks`}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {view.type !== "artists" && (
+              {view.type !== "artists" && !isPublicView && (
                 <button
                   onClick={() => { setSelectMode((s) => !s); setSelected([]); setBulkMenu(false); }}
                   className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition ${
@@ -908,7 +1049,7 @@ function Index() {
             </div>
           </div>
 
-          {selectMode && view.type !== "artists" && (
+          {selectMode && view.type !== "artists" && !isPublicView && (
             <div className="sticky top-0 z-30 mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--aurora-2)]/30 bg-panel/90 px-4 py-3 backdrop-blur-xl">
               <span className="text-xs font-bold">{selected.length} selected</span>
               <button onClick={() => setSelected(filtered.map((t) => t.id))} className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-2)]">
@@ -995,7 +1136,21 @@ function Index() {
             </div>
           )}
 
-          {loading ? (
+          {isPublicView ? (
+            <PublicLibrary
+              myId={user?.id ?? null}
+              savedSourceIds={savedSourceIds}
+              playlists={playlists}
+              onAdd={async (pt, opts) => { await addFromPublic(pt, opts); }}
+              onAddToPlaylist={addPublicToPlaylist}
+              onCreatePlaylist={createPlaylist}
+              fixedKind={view.type === "public-videos" ? "video" : "audio"}
+              title={view.type === "public-videos" ? "Public Videos" : "Public Songs"}
+              subtitle={view.type === "public-videos"
+                ? "Music videos shared publicly by DoMusic members — play them or add them to your own library and playlists"
+                : "Songs shared publicly by DoMusic members — play them or add them to your own library and playlists"}
+            />
+          ) : loading ? (
             <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">Loading your library…</div>
           ) : view.type === "artists" ? (
             artistGroups.length === 0 ? (
@@ -1089,6 +1244,11 @@ function Index() {
                             <UserIcon className="h-3.5 w-3.5 text-white" />
                           </button>
                         )}
+                        <button onClick={(e) => { e.stopPropagation(); toggleTrackPublic(t.id); }}
+                          className={`rounded-full p-2 backdrop-blur transition hover:scale-110 ${t.is_public ? "bg-[var(--aurora-1)]/80" : "bg-black/60 hover:bg-[var(--aurora-1)]/80"}`}
+                          title={t.is_public ? "Public — visible in the community library. Click to make private" : "Private — only you can see it. Click to share publicly"}>
+                          {t.is_public ? <Globe2 className="h-3.5 w-3.5 text-white" /> : <Lock className="h-3.5 w-3.5 text-white" />}
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }}
                           className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-1)]/80"
                           title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}>
@@ -1307,6 +1467,9 @@ function Index() {
               </button>
               <button onClick={() => { setShowMobileMenu(false); if (current) setEditing({ id: current.id, song: current.song, artist: current.artist, album: current.album }); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3" disabled={!current}>
                 <Pencil className="h-5 w-5" /><span className="text-[10px] font-semibold">Edit</span>
+              </button>
+              <button onClick={() => { setShowMobileMenu(false); setView({ type: "public-videos" }); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Video className="h-5 w-5" /><span className="text-[10px] font-semibold">Public</span>
               </button>
               <button onClick={() => { setShowMobileMenu(false); setMuted((m) => !m); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}<span className="text-[10px] font-semibold">{muted ? "Unmute" : "Mute"}</span>
