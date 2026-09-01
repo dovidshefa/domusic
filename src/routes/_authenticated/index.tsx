@@ -196,6 +196,23 @@ function Index() {
 
   const tracksRef = useRef<Track[]>([]);
   useEffect(() => { tracksRef.current = tracks; }, [tracks]);
+  const playlistsRef = useRef<Playlist[]>([]);
+  useEffect(() => { playlistsRef.current = playlists; }, [playlists]);
+  const uploadMetaRef = useRef<{ isPublic: boolean; genre: string | null }>({ isPublic: false, genre: null });
+  useEffect(() => { uploadMetaRef.current = { isPublic: uploadPublic, genre: uploadGenre.trim() || null }; }, [uploadPublic, uploadGenre]);
+  useEffect(() => {
+    try { localStorage.setItem(UPLOAD_META_KEY, JSON.stringify({ isPublic: uploadPublic, genre: uploadGenre })); } catch {}
+  }, [uploadPublic, uploadGenre]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(UPLOAD_META_KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p.isPublic === "boolean") setUploadPublic(p.isPublic);
+        if (typeof p.genre === "string") setUploadGenre(p.genre);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
