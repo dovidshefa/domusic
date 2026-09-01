@@ -1468,6 +1468,9 @@ function Index() {
               <button onClick={() => { setShowMobileMenu(false); if (current) setEditing({ id: current.id, song: current.song, artist: current.artist, album: current.album }); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3" disabled={!current}>
                 <Pencil className="h-5 w-5" /><span className="text-[10px] font-semibold">Edit</span>
               </button>
+              <button onClick={() => { setShowMobileMenu(false); setView({ type: "public-videos" }); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Video className="h-5 w-5" /><span className="text-[10px] font-semibold">Public</span>
+              </button>
               <button onClick={() => { setShowMobileMenu(false); setMuted((m) => !m); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}<span className="text-[10px] font-semibold">{muted ? "Unmute" : "Mute"}</span>
               </button>
