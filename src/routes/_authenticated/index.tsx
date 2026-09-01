@@ -1244,6 +1244,11 @@ function Index() {
                             <UserIcon className="h-3.5 w-3.5 text-white" />
                           </button>
                         )}
+                        <button onClick={(e) => { e.stopPropagation(); toggleTrackPublic(t.id); }}
+                          className={`rounded-full p-2 backdrop-blur transition hover:scale-110 ${t.is_public ? "bg-[var(--aurora-1)]/80" : "bg-black/60 hover:bg-[var(--aurora-1)]/80"}`}
+                          title={t.is_public ? "Public — visible in the community library. Click to make private" : "Private — only you can see it. Click to share publicly"}>
+                          {t.is_public ? <Globe2 className="h-3.5 w-3.5 text-white" /> : <Lock className="h-3.5 w-3.5 text-white" />}
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }}
                           className="rounded-full bg-black/60 p-2 backdrop-blur transition hover:scale-110 hover:bg-[var(--aurora-1)]/80"
                           title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}>
