@@ -5,11 +5,12 @@ import {
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
-  CheckSquare, Square, CheckCheck,
+  CheckSquare, Square, CheckCheck, Video, Globe2, Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { UploadPanel } from "@/components/UploadPanel";
 import { useUploadManager } from "@/lib/upload-manager";
+import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -48,6 +49,7 @@ type EditingTrack = { id: string; song: string; artist: string; album: string } 
 const RECENT_KEY = "dovid-recent-v1";
 const EQ_KEY = "dovid-eq-v1";
 const SELECTION_KEY = "dovid-selection-v1";
+const UPLOAD_META_KEY = "dovid-upload-meta-v1";
 const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days
 
 const fmt = (s: number) => {
@@ -102,6 +104,8 @@ function Index() {
   const [artistAvatars, setArtistAvatars] = useState<Record<string, string>>({});
   const artistAvatarFileRef = useRef<HTMLInputElement>(null);
   const [editingArtistAvatar, setEditingArtistAvatar] = useState<string | null>(null);
+  const [uploadPublic, setUploadPublic] = useState(false);
+  const [uploadGenre, setUploadGenre] = useState("");
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
