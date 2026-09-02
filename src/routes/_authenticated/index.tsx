@@ -134,7 +134,7 @@ function Index() {
       });
 
       const [{ data: tRows }, { data: pRows }, { data: ptRows }, { data: aRows }] = await Promise.all([
-        supabase.from("tracks").select("*").order("created_at", { ascending: false }),
+        supabase.from("tracks").select("*").eq("user_id", u.user.id).order("created_at", { ascending: false }),
         supabase.from("playlists").select("*").order("created_at", { ascending: true }),
         supabase.from("playlist_tracks").select("playlist_id, track_id, position").order("position", { ascending: true }),
         supabase.from("artist_profiles").select("name, avatar_url"),
