@@ -79,18 +79,21 @@ export type Database = {
       }
       playlists: {
         Row: {
+          cover_url: string | null
           created_at: string
           id: string
           name: string
           user_id: string
         }
         Insert: {
+          cover_url?: string | null
           created_at?: string
           id?: string
           name: string
           user_id: string
         }
         Update: {
+          cover_url?: string | null
           created_at?: string
           id?: string
           name?: string
@@ -202,6 +205,32 @@ export type Database = {
           _sort?: string
         }
         Returns: {
+          album: string
+          artist: string
+          cover: string
+          created_at: string
+          duration: number
+          genre: string
+          id: string
+          kind: string
+          plays: number
+          song: string
+          storage_path: string
+          uploader_id: string
+          uploader_name: string
+        }[]
+      }
+      browse_public_tracks_v2: {
+        Args: {
+          _genre?: string
+          _kind?: string
+          _limit?: number
+          _offset?: number
+          _search?: string
+          _sort?: string
+        }
+        Returns: {
+          added_count: number
           album: string
           artist: string
           cover: string

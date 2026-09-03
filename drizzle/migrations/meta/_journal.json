@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788429047401,
+      "tag": "0000_playlist_covers_and_public_browse_v2",
+      "breakpoints": true
+    }
+  ]
+}
