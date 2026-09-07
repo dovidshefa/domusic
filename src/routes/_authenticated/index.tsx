@@ -1409,8 +1409,11 @@ function Index() {
               <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Next (Shift+→)">
                 <SkipForward className="h-5 w-5" />
               </button>
-              <button onClick={() => setRepeat((r) => !r)} className={`hidden p-2 transition md:block ${repeat ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
+              <button data-testid="repeat-btn" onClick={() => setRepeatMode((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))}
+                title={repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat all" : "Repeat off"}
+                className={`relative hidden p-2 transition md:block ${repeatMode !== "off" ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
                 <Repeat className="h-4 w-4" />
+                {repeatMode === "one" && <span className="absolute -bottom-0.5 right-0.5 text-[9px] font-bold leading-none">1</span>}
               </button>
             </div>
             <div className="hidden w-full max-w-md items-center gap-3 md:flex">
