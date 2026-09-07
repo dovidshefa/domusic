@@ -272,12 +272,16 @@ function Index() {
     } else if (view.type === "artist") {
       list = list.filter((t) => splitArtists(t.artist).includes(view.name));
     }
-    if (query) {
-      const q = query.toLowerCase();
+    const term = view.type === "playlist" ? (playlistQuery || query) : query;
+    if (term) {
+      const q = term.toLowerCase();
       list = list.filter((t) => t.song.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || t.album.toLowerCase().includes(q));
     }
     return list;
-  }, [tracks, view, recent, query, activePlaylist]);
+  }, [tracks, view, recent, query, playlistQuery, activePlaylist]);
+
+  // reset in-playlist search when switching playlists
+  useEffect(() => { setPlaylistQuery(""); }, [view.type === "playlist" ? view.id : view.type]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = muted ? 0 : volume;
