@@ -73,9 +73,14 @@ function Index() {
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
   const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
+  const [queueIds, setQueueIds] = useState<string[]>([]);
+  const [playlistQuery, setPlaylistQuery] = useState("");
+  const dragIdRef = useRef<string | null>(null);
+  const queueDragRef = useRef<string | null>(null);
+  const playlistCoverRef = useRef<HTMLInputElement>(null);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
