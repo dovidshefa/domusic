@@ -1557,8 +1557,8 @@ function Index() {
               <button onClick={() => { setShuffle((s) => !s); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${shuffle ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
                 <Shuffle className="h-5 w-5" /><span className="text-[10px] font-semibold">Shuffle</span>
               </button>
-              <button onClick={() => { setRepeat((r) => !r); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeat ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
-                <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">Repeat</span>
+              <button onClick={() => setRepeatMode((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeatMode !== "off" ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">{repeatMode === "one" ? "Repeat 1" : repeatMode === "all" ? "Repeat all" : "Repeat"}</span>
               </button>
               <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
