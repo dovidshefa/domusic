@@ -39,7 +39,7 @@ type Track = {
   source_track_id: string | null;
 };
 
-type Playlist = { id: string; name: string; trackIds: string[] };
+type Playlist = { id: string; name: string; trackIds: string[]; coverPath?: string | null; cover?: string | null };
 type View =
   | { type: "library" | "favorites" | "recent" | "trending" | "artists" | "public-videos" | "public-songs" }
   | { type: "playlist"; id: string }
@@ -73,9 +73,14 @@ function Index() {
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
   const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
+  const [queueIds, setQueueIds] = useState<string[]>([]);
+  const [playlistQuery, setPlaylistQuery] = useState("");
+  const dragIdRef = useRef<string | null>(null);
+  const queueDragRef = useRef<string | null>(null);
+  const playlistCoverRef = useRef<HTMLInputElement>(null);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -174,7 +179,15 @@ function Index() {
         arr.push(r.track_id);
         ptByPlaylist.set(r.playlist_id, arr);
       });
-      setPlaylists((pRows ?? []).map((p: any) => ({ id: p.id, name: p.name, trackIds: ptByPlaylist.get(p.id) ?? [] })));
+      const withCovers = await Promise.all((pRows ?? []).map(async (p: any) => {
+        let cover: string | null = null;
+        if (p.cover_url) {
+          const { data } = await supabase.storage.from("media").createSignedUrl(p.cover_url, SIGNED_URL_TTL);
+          cover = data?.signedUrl ?? null;
+        }
+        return { id: p.id, name: p.name, trackIds: ptByPlaylist.get(p.id) ?? [], coverPath: p.cover_url ?? null, cover } as Playlist;
+      }));
+      setPlaylists(withCovers);
 
       try {
         const r = localStorage.getItem(RECENT_KEY);
@@ -259,12 +272,16 @@ function Index() {
     } else if (view.type === "artist") {
       list = list.filter((t) => splitArtists(t.artist).includes(view.name));
     }
-    if (query) {
-      const q = query.toLowerCase();
+    const term = view.type === "playlist" ? (playlistQuery || query) : query;
+    if (term) {
+      const q = term.toLowerCase();
       list = list.filter((t) => t.song.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || t.album.toLowerCase().includes(q));
     }
     return list;
-  }, [tracks, view, recent, query, activePlaylist]);
+  }, [tracks, view, recent, query, playlistQuery, activePlaylist]);
+
+  // reset in-playlist search when switching playlists
+  useEffect(() => { setPlaylistQuery(""); }, [view.type === "playlist" ? view.id : view.type]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = muted ? 0 : volume;
@@ -288,24 +305,57 @@ function Index() {
     supabase.from("tracks").update({ plays: (tracks.find(t => t.id === id)?.plays ?? 0) + 1 }).eq("id", id).then(() => {});
   }, [tracks]);
 
+  // Playback queue — user-reorderable order over the library
+  const queue = useMemo(() => {
+    const byId = new Map(tracks.map((t) => [t.id, t] as const));
+    const ordered = queueIds.map((id) => byId.get(id)).filter(Boolean) as Track[];
+    const seen = new Set(ordered.map((t) => t.id));
+    return [...ordered, ...tracks.filter((t) => !seen.has(t.id))];
+  }, [tracks, queueIds]);
+
+  const reorderQueue = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const ids = queue.map((t) => t.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    setQueueIds(ids);
+  };
+
+  const removeFromQueue = (id: string) => setQueueIds(queue.map((t) => t.id).filter((x) => x !== id));
+
   const handleNext = () => {
-    if (tracks.length === 0) return;
-    const idx = tracks.findIndex((t) => t.id === currentId);
-    const nextId = shuffle && tracks.length > 1
-      ? tracks.filter((t) => t.id !== currentId)[Math.floor(Math.random() * (tracks.length - 1))].id
-      : tracks[(idx + 1) % tracks.length].id;
-    playTrack(nextId);
+    if (queue.length === 0) return;
+    const idx = queue.findIndex((t) => t.id === currentId);
+    if (shuffle && queue.length > 1) {
+      const pool = queue.filter((t) => t.id !== currentId);
+      playTrack(pool[Math.floor(Math.random() * pool.length)].id);
+      return;
+    }
+    const isLast = idx === queue.length - 1;
+    if (isLast && repeatMode === "off") { setPlaying(false); return; }
+    playTrack(queue[(idx + 1) % queue.length].id);
   };
   const handlePrev = () => {
-    if (tracks.length === 0) return;
+    if (queue.length === 0) return;
     if (progress > 3) {
       setProgress(0);
       if (audioRef.current) audioRef.current.currentTime = 0;
       if (videoRef.current) videoRef.current.currentTime = 0;
       return;
     }
-    const idx = tracks.findIndex((t) => t.id === currentId);
-    playTrack(tracks[(idx - 1 + tracks.length) % tracks.length].id);
+    const idx = queue.findIndex((t) => t.id === currentId);
+    playTrack(queue[(idx - 1 + queue.length) % queue.length].id);
+  };
+
+  const handleEnded = () => {
+    if (repeatMode === "one") {
+      const el = isVideo ? videoRef.current : audioRef.current;
+      if (el) { el.currentTime = 0; void el.play(); setProgress(0); setPlaying(true); }
+      return;
+    }
+    handleNext();
   };
 
   const upload = useUploadManager({
@@ -579,6 +629,55 @@ function Index() {
     setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: p.trackIds.filter((x) => x !== trackId) } : p)));
     await supabase.from("playlist_tracks").delete().eq("playlist_id", playlistId).eq("track_id", trackId);
   };
+
+  const renamePlaylist = async (id: string) => {
+    const pl = playlists.find((p) => p.id === id);
+    if (!pl) return;
+    const name = prompt("Rename playlist", pl.name)?.trim();
+    if (!name || name === pl.name) return;
+    setPlaylists((pls) => pls.map((p) => (p.id === id ? { ...p, name } : p)));
+    await supabase.from("playlists").update({ name }).eq("id", id);
+  };
+
+  const triggerPlaylistCover = () => playlistCoverRef.current?.click();
+
+  const handlePlaylistCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user || view.type !== "playlist") return;
+    if (!file.type.startsWith("image/")) return;
+    const playlistId = view.id;
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const path = `${user.id}/playlists/${playlistId}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("media").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) return;
+    const { error } = await supabase.from("playlists").update({ cover_url: path }).eq("id", playlistId);
+    if (error) return;
+    const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, coverPath: path, cover: signed?.signedUrl ?? null } : p)));
+  };
+
+  const persistPlaylistOrder = async (playlistId: string, trackIds: string[]) => {
+    await supabase.from("playlist_tracks").upsert(
+      trackIds.map((track_id, i) => ({ playlist_id: playlistId, track_id, position: i })),
+      { onConflict: "playlist_id,track_id" },
+    );
+  };
+
+  const reorderPlaylist = async (playlistId: string, fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const ids = [...pl.trackIds];
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: ids } : p)));
+    await persistPlaylistOrder(playlistId, ids);
+  };
+
+
 
   const seekToClientX = (clientX: number, rect: DOMRect) => {
     if (!current) return;
@@ -940,7 +1039,7 @@ function Index() {
                     <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                       onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                       onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                      onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
+                      onEnded={handleEnded}
                       className={isFullscreen ? "h-full w-full object-contain" : "h-full w-full object-cover"} />
                     {/* YouTube-style hover overlay */}
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-0 transition-opacity duration-300 group-hover/vid:opacity-100" />
@@ -1310,8 +1409,11 @@ function Index() {
               <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Next (Shift+→)">
                 <SkipForward className="h-5 w-5" />
               </button>
-              <button onClick={() => setRepeat((r) => !r)} className={`hidden p-2 transition md:block ${repeat ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
+              <button data-testid="repeat-btn" onClick={() => setRepeatMode((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))}
+                title={repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat all" : "Repeat off"}
+                className={`relative hidden p-2 transition md:block ${repeatMode !== "off" ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
                 <Repeat className="h-4 w-4" />
+                {repeatMode === "one" && <span className="absolute -bottom-0.5 right-0.5 text-[9px] font-bold leading-none">1</span>}
               </button>
             </div>
             <div className="hidden w-full max-w-md items-center gap-3 md:flex">
@@ -1352,17 +1454,21 @@ function Index() {
 
       {/* Queue drawer */}
       {showQueue && (
-        <aside className="absolute right-0 top-0 z-30 flex h-full w-[340px] flex-col border-l border-border bg-panel/95 backdrop-blur-xl">
+        <aside data-testid="queue-drawer" className="absolute right-0 top-0 z-30 flex h-full w-[340px] flex-col border-l border-border bg-panel/95 backdrop-blur-xl">
           <div className="flex items-center justify-between border-b border-border p-5">
             <div>
               <div className="font-display text-2xl">Up Next</div>
-              <div className="text-xs text-muted-foreground">{tracks.length} in queue</div>
+              <div className="text-xs text-muted-foreground">{queue.length} in queue · drag to reorder</div>
             </div>
             <button onClick={() => setShowQueue(false)} className="rounded-full p-2 hover:bg-secondary"><X className="h-4 w-4" /></button>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
-            {tracks.map((t) => (
-              <div key={t.id} className={`group flex w-full items-center gap-3 rounded-xl p-2 transition hover:bg-secondary ${t.id === currentId ? "bg-secondary/70" : ""}`}>
+            {queue.map((t) => (
+              <div key={t.id} data-queue-id={t.id} draggable
+                onDragStart={() => { queueDragRef.current = t.id; }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); if (queueDragRef.current) reorderQueue(queueDragRef.current, t.id); queueDragRef.current = null; }}
+                className={`group flex w-full cursor-grab items-center gap-3 rounded-xl p-2 transition hover:bg-secondary ${t.id === currentId ? "bg-secondary/70" : ""}`}>
                 <button onClick={() => playTrack(t.id)} className="flex flex-1 items-center gap-3 text-left">
                   <img src={t.cover} alt="" className="h-11 w-11 rounded-lg object-cover" />
                   <div className="min-w-0 flex-1">
@@ -1370,8 +1476,9 @@ function Index() {
                     <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
                   </div>
                 </button>
-                <button onClick={() => deleteTrack(t.id)} className="rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:text-[var(--aurora-1)] group-hover:opacity-100">
-                  <Trash2 className="h-3.5 w-3.5" />
+                <button onClick={() => removeFromQueue(t.id)} title="Remove from queue"
+                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:text-[var(--aurora-1)] group-hover:opacity-100">
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}
@@ -1382,7 +1489,7 @@ function Index() {
       <audio ref={audioRef} src={!isVideo ? current?.src : undefined} crossOrigin="anonymous"
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
+        onEnded={handleEnded} />
 
       {/* Edit track dialog */}
       {editing && (
@@ -1450,8 +1557,8 @@ function Index() {
               <button onClick={() => { setShuffle((s) => !s); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${shuffle ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
                 <Shuffle className="h-5 w-5" /><span className="text-[10px] font-semibold">Shuffle</span>
               </button>
-              <button onClick={() => { setRepeat((r) => !r); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeat ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
-                <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">Repeat</span>
+              <button onClick={() => setRepeatMode((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeatMode !== "off" ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">{repeatMode === "one" ? "Repeat 1" : repeatMode === "all" ? "Repeat all" : "Repeat"}</span>
               </button>
               <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
