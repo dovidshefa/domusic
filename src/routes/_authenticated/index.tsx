@@ -1454,17 +1454,21 @@ function Index() {
 
       {/* Queue drawer */}
       {showQueue && (
-        <aside className="absolute right-0 top-0 z-30 flex h-full w-[340px] flex-col border-l border-border bg-panel/95 backdrop-blur-xl">
+        <aside data-testid="queue-drawer" className="absolute right-0 top-0 z-30 flex h-full w-[340px] flex-col border-l border-border bg-panel/95 backdrop-blur-xl">
           <div className="flex items-center justify-between border-b border-border p-5">
             <div>
               <div className="font-display text-2xl">Up Next</div>
-              <div className="text-xs text-muted-foreground">{tracks.length} in queue</div>
+              <div className="text-xs text-muted-foreground">{queue.length} in queue · drag to reorder</div>
             </div>
             <button onClick={() => setShowQueue(false)} className="rounded-full p-2 hover:bg-secondary"><X className="h-4 w-4" /></button>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
-            {tracks.map((t) => (
-              <div key={t.id} className={`group flex w-full items-center gap-3 rounded-xl p-2 transition hover:bg-secondary ${t.id === currentId ? "bg-secondary/70" : ""}`}>
+            {queue.map((t) => (
+              <div key={t.id} data-queue-id={t.id} draggable
+                onDragStart={() => { queueDragRef.current = t.id; }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); if (queueDragRef.current) reorderQueue(queueDragRef.current, t.id); queueDragRef.current = null; }}
+                className={`group flex w-full cursor-grab items-center gap-3 rounded-xl p-2 transition hover:bg-secondary ${t.id === currentId ? "bg-secondary/70" : ""}`}>
                 <button onClick={() => playTrack(t.id)} className="flex flex-1 items-center gap-3 text-left">
                   <img src={t.cover} alt="" className="h-11 w-11 rounded-lg object-cover" />
                   <div className="min-w-0 flex-1">
@@ -1472,8 +1476,9 @@ function Index() {
                     <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
                   </div>
                 </button>
-                <button onClick={() => deleteTrack(t.id)} className="rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:text-[var(--aurora-1)] group-hover:opacity-100">
-                  <Trash2 className="h-3.5 w-3.5" />
+                <button onClick={() => removeFromQueue(t.id)} title="Remove from queue"
+                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:text-[var(--aurora-1)] group-hover:opacity-100">
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}
@@ -1484,7 +1489,7 @@ function Index() {
       <audio ref={audioRef} src={!isVideo ? current?.src : undefined} crossOrigin="anonymous"
         onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        onEnded={() => (repeat ? (audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play())) : handleNext())} />
+        onEnded={handleEnded} />
 
       {/* Edit track dialog */}
       {editing && (
