@@ -179,7 +179,15 @@ function Index() {
         arr.push(r.track_id);
         ptByPlaylist.set(r.playlist_id, arr);
       });
-      setPlaylists((pRows ?? []).map((p: any) => ({ id: p.id, name: p.name, trackIds: ptByPlaylist.get(p.id) ?? [] })));
+      const withCovers = await Promise.all((pRows ?? []).map(async (p: any) => {
+        let cover: string | null = null;
+        if (p.cover_url) {
+          const { data } = await supabase.storage.from("media").createSignedUrl(p.cover_url, SIGNED_URL_TTL);
+          cover = data?.signedUrl ?? null;
+        }
+        return { id: p.id, name: p.name, trackIds: ptByPlaylist.get(p.id) ?? [], coverPath: p.cover_url ?? null, cover } as Playlist;
+      }));
+      setPlaylists(withCovers);
 
       try {
         const r = localStorage.getItem(RECENT_KEY);
