@@ -305,24 +305,57 @@ function Index() {
     supabase.from("tracks").update({ plays: (tracks.find(t => t.id === id)?.plays ?? 0) + 1 }).eq("id", id).then(() => {});
   }, [tracks]);
 
+  // Playback queue — user-reorderable order over the library
+  const queue = useMemo(() => {
+    const byId = new Map(tracks.map((t) => [t.id, t] as const));
+    const ordered = queueIds.map((id) => byId.get(id)).filter(Boolean) as Track[];
+    const seen = new Set(ordered.map((t) => t.id));
+    return [...ordered, ...tracks.filter((t) => !seen.has(t.id))];
+  }, [tracks, queueIds]);
+
+  const reorderQueue = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const ids = queue.map((t) => t.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    setQueueIds(ids);
+  };
+
+  const removeFromQueue = (id: string) => setQueueIds(queue.map((t) => t.id).filter((x) => x !== id));
+
   const handleNext = () => {
-    if (tracks.length === 0) return;
-    const idx = tracks.findIndex((t) => t.id === currentId);
-    const nextId = shuffle && tracks.length > 1
-      ? tracks.filter((t) => t.id !== currentId)[Math.floor(Math.random() * (tracks.length - 1))].id
-      : tracks[(idx + 1) % tracks.length].id;
-    playTrack(nextId);
+    if (queue.length === 0) return;
+    const idx = queue.findIndex((t) => t.id === currentId);
+    if (shuffle && queue.length > 1) {
+      const pool = queue.filter((t) => t.id !== currentId);
+      playTrack(pool[Math.floor(Math.random() * pool.length)].id);
+      return;
+    }
+    const isLast = idx === queue.length - 1;
+    if (isLast && repeatMode === "off") { setPlaying(false); return; }
+    playTrack(queue[(idx + 1) % queue.length].id);
   };
   const handlePrev = () => {
-    if (tracks.length === 0) return;
+    if (queue.length === 0) return;
     if (progress > 3) {
       setProgress(0);
       if (audioRef.current) audioRef.current.currentTime = 0;
       if (videoRef.current) videoRef.current.currentTime = 0;
       return;
     }
-    const idx = tracks.findIndex((t) => t.id === currentId);
-    playTrack(tracks[(idx - 1 + tracks.length) % tracks.length].id);
+    const idx = queue.findIndex((t) => t.id === currentId);
+    playTrack(queue[(idx - 1 + queue.length) % queue.length].id);
+  };
+
+  const handleEnded = () => {
+    if (repeatMode === "one") {
+      const el = isVideo ? videoRef.current : audioRef.current;
+      if (el) { el.currentTime = 0; void el.play(); setProgress(0); setPlaying(true); }
+      return;
+    }
+    handleNext();
   };
 
   const upload = useUploadManager({
