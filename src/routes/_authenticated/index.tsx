@@ -39,7 +39,7 @@ type Track = {
   source_track_id: string | null;
 };
 
-type Playlist = { id: string; name: string; trackIds: string[] };
+type Playlist = { id: string; name: string; trackIds: string[]; coverPath?: string | null; cover?: string | null };
 type View =
   | { type: "library" | "favorites" | "recent" | "trending" | "artists" | "public-videos" | "public-songs" }
   | { type: "playlist"; id: string }
