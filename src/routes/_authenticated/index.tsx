@@ -630,6 +630,55 @@ function Index() {
     await supabase.from("playlist_tracks").delete().eq("playlist_id", playlistId).eq("track_id", trackId);
   };
 
+  const renamePlaylist = async (id: string) => {
+    const pl = playlists.find((p) => p.id === id);
+    if (!pl) return;
+    const name = prompt("Rename playlist", pl.name)?.trim();
+    if (!name || name === pl.name) return;
+    setPlaylists((pls) => pls.map((p) => (p.id === id ? { ...p, name } : p)));
+    await supabase.from("playlists").update({ name }).eq("id", id);
+  };
+
+  const triggerPlaylistCover = () => playlistCoverRef.current?.click();
+
+  const handlePlaylistCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user || view.type !== "playlist") return;
+    if (!file.type.startsWith("image/")) return;
+    const playlistId = view.id;
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const path = `${user.id}/playlists/${playlistId}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("media").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) return;
+    const { error } = await supabase.from("playlists").update({ cover_url: path }).eq("id", playlistId);
+    if (error) return;
+    const { data: signed } = await supabase.storage.from("media").createSignedUrl(path, SIGNED_URL_TTL);
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, coverPath: path, cover: signed?.signedUrl ?? null } : p)));
+  };
+
+  const persistPlaylistOrder = async (playlistId: string, trackIds: string[]) => {
+    await supabase.from("playlist_tracks").upsert(
+      trackIds.map((track_id, i) => ({ playlist_id: playlistId, track_id, position: i })),
+      { onConflict: "playlist_id,track_id" },
+    );
+  };
+
+  const reorderPlaylist = async (playlistId: string, fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (!pl) return;
+    const ids = [...pl.trackIds];
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: ids } : p)));
+    await persistPlaylistOrder(playlistId, ids);
+  };
+
+
+
   const seekToClientX = (clientX: number, rect: DOMRect) => {
     if (!current) return;
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
