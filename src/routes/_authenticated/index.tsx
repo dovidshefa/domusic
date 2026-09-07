@@ -1039,7 +1039,7 @@ function Index() {
                     <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                       onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
                       onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                      onEnded={() => (repeat ? (videoRef.current && (videoRef.current.currentTime = 0, videoRef.current.play())) : handleNext())}
+                      onEnded={handleEnded}
                       className={isFullscreen ? "h-full w-full object-contain" : "h-full w-full object-cover"} />
                     {/* YouTube-style hover overlay */}
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-0 transition-opacity duration-300 group-hover/vid:opacity-100" />
