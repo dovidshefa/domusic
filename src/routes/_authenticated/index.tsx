@@ -1339,6 +1339,15 @@ function Index() {
                 const active = t.id === currentId;
                 return (
                   <article key={t.id} onClick={() => playTrack(t.id)}
+                    data-track-id={t.id}
+                    draggable={view.type === "playlist"}
+                    onDragStart={view.type === "playlist" ? () => { dragIdRef.current = t.id; } : undefined}
+                    onDragOver={view.type === "playlist" ? (e) => e.preventDefault() : undefined}
+                    onDrop={view.type === "playlist" ? (e) => {
+                      e.preventDefault();
+                      if (dragIdRef.current && view.type === "playlist") void reorderPlaylist(view.id, dragIdRef.current, t.id);
+                      dragIdRef.current = null;
+                    } : undefined}
                     className={["group relative cursor-pointer overflow-hidden rounded-2xl border bg-gradient-to-b from-card to-background transition duration-300",
                       "hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)]",
                       active ? "border-[var(--aurora-2)]/50 shadow-[0_0_30px_-5px_rgba(168,85,247,0.4)]" : "border-border hover:border-[var(--aurora-2)]/30"].join(" ")}>
