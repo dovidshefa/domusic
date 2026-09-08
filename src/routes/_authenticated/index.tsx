@@ -1235,6 +1235,45 @@ function Index() {
             </div>
           )}
 
+          <input ref={playlistCoverRef} type="file" accept="image/*" className="hidden" onChange={handlePlaylistCoverFile} />
+
+          {view.type === "playlist" && activePlaylist && (
+            <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card/60 p-4 backdrop-blur md:flex-row md:items-center">
+              <div className="relative">
+                {activePlaylist.cover ? (
+                  <img src={activePlaylist.cover} alt={activePlaylist.name} className="h-24 w-24 rounded-xl object-cover ring-2 ring-[var(--aurora-2)]/40" />
+                ) : (
+                  <div className="bg-aurora flex h-24 w-24 items-center justify-center rounded-xl text-3xl font-bold text-primary-foreground">
+                    {activePlaylist.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <button data-testid="playlist-cover-btn" onClick={triggerPlaylistCover} title="Change playlist cover"
+                  className="absolute -bottom-1 -right-1 rounded-full bg-[var(--aurora-2)] p-1.5 text-primary-foreground shadow-lg transition hover:scale-110">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold tracking-[0.25em] text-muted-foreground">PLAYLIST</div>
+                <div className="flex items-center gap-2">
+                  <div className="truncate font-display text-3xl">{activePlaylist.name}</div>
+                  <button data-testid="playlist-rename-btn" onClick={() => renamePlaylist(activePlaylist.id)} title="Rename playlist"
+                    className="rounded-full border border-border bg-secondary/60 p-1.5 text-muted-foreground transition hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button data-testid="playlist-delete-btn" onClick={() => deletePlaylist(activePlaylist.id)} title="Delete playlist"
+                    className="rounded-full border border-border bg-secondary/60 p-1.5 text-muted-foreground transition hover:border-[var(--aurora-1)]/40 hover:text-[var(--aurora-1)]">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-xs text-muted-foreground">{activePlaylist.trackIds.length} track{activePlaylist.trackIds.length !== 1 ? "s" : ""} · drag cards to reorder</div>
+                <input data-testid="playlist-search" value={playlistQuery} onChange={(e) => setPlaylistQuery(e.target.value)}
+                  placeholder="Search this playlist…"
+                  className="mt-3 w-full max-w-sm rounded-full border border-border bg-secondary/50 px-4 py-2 text-xs outline-none focus:border-[var(--aurora-2)]/50 md:text-sm" />
+              </div>
+            </div>
+          )}
+
+
           {isPublicView ? (
             <PublicLibrary
               myId={user?.id ?? null}
