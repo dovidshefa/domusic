@@ -442,9 +442,43 @@ function Index() {
       const trackId = await addFromPublic(pt);
       if (!trackId) return;
       const pl = playlistsRef.current.find((p) => p.id === playlistId);
-      if (!pl || pl.trackIds.includes(trackId)) return;
+      if (!pl) return;
+      if (pl.trackIds.includes(trackId)) {
+        toast.info(`Already in ${pl.name}`);
+        return;
+      }
       setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, trackId] } : p)));
       await supabase.from("playlist_tracks").insert({ playlist_id: playlistId, track_id: trackId, position: pl.trackIds.length });
+      toast.success(`1 song added to ${pl.name}`);
+    },
+    [addFromPublic],
+  );
+
+  // Multi-select: add every selected public item to ONE playlist in a single action,
+  // preserving the selection order and skipping items already in the playlist.
+  const addManyPublicToPlaylist = useCallback(
+    async (playlistId: string, pts: PublicTrack[]) => {
+      const pl = playlistsRef.current.find((p) => p.id === playlistId);
+      if (!pl) return;
+      const ids: string[] = [];
+      for (const pt of pts) {
+        const trackId = await addFromPublic(pt);
+        if (trackId && !ids.includes(trackId)) ids.push(trackId);
+      }
+      const fresh = ids.filter((id) => !pl.trackIds.includes(id));
+      if (fresh.length === 0) {
+        toast.info(`Already in ${pl.name}`);
+        return;
+      }
+      setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, ...fresh] } : p)));
+      await supabase.from("playlist_tracks").insert(
+        fresh.map((track_id, i) => ({ playlist_id: playlistId, track_id, position: pl.trackIds.length + i })),
+      );
+      const skipped = ids.length - fresh.length;
+      toast.success(
+        `${fresh.length} ${fresh.length === 1 ? "song" : "songs"} added to ${pl.name}` +
+          (skipped > 0 ? ` · ${skipped} already there` : ""),
+      );
     },
     [addFromPublic],
   );
