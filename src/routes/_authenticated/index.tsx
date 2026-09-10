@@ -1324,6 +1324,7 @@ function Index() {
               playlists={playlists}
               onAdd={async (pt, opts) => { await addFromPublic(pt, opts); }}
               onAddToPlaylist={addPublicToPlaylist}
+              onAddManyToPlaylist={addManyPublicToPlaylist}
               onCreatePlaylist={createPlaylist}
               fixedKind={view.type === "public-videos" ? "video" : "audio"}
               title={view.type === "public-videos" ? "Public Videos" : "Public Songs"}
