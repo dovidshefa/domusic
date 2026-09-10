@@ -60,14 +60,30 @@ type CardProps = {
   onAddToPlaylist: (playlistId: string) => void;
   onCreatePlaylist: () => void;
   compact?: boolean;
+  selectMode?: boolean;
+  checked?: boolean;
+  onToggleSelect?: () => void;
 };
 
 function PublicCard(p: CardProps) {
-  const { t, saved, mine, busy, menuOpen, onToggleMenu, playlists, onPlay, onAddMine, onAddToPlaylist, onCreatePlaylist, compact } = p;
+  const { t, saved, mine, busy, menuOpen, onToggleMenu, playlists, onPlay, onAddMine, onAddToPlaylist, onCreatePlaylist, compact, selectMode, checked, onToggleSelect } = p;
   return (
     <article
       data-public-card={t.id}
-      className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background transition duration-300 hover:-translate-y-1.5 hover:border-[var(--aurora-2)]/30 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)]">
+      onClick={selectMode ? (e) => { e.stopPropagation(); onToggleSelect?.(); } : undefined}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-b from-card to-background transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)] ${
+        selectMode && checked ? "border-[var(--aurora-2)] ring-2 ring-[var(--aurora-2)]/40" : "border-border hover:border-[var(--aurora-2)]/30"
+      } ${selectMode ? "cursor-pointer" : ""}`}>
+      {selectMode && (
+        <button
+          data-public-check={t.id}
+          onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+          aria-label={checked ? `Deselect ${t.song}` : `Select ${t.song}`}
+          aria-pressed={!!checked}
+          className="absolute right-3 top-3 z-30 rounded-lg bg-black/70 p-1.5 text-white backdrop-blur">
+          {checked ? <CheckSquare className="h-4 w-4 text-[var(--aurora-2)]" /> : <Square className="h-4 w-4" />}
+        </button>
+      )}
       <div className="relative aspect-square overflow-hidden">
         <img src={t.cover ?? `https://picsum.photos/seed/${encodeURIComponent(t.song)}/600/600`} alt={t.song}
           loading="lazy"
