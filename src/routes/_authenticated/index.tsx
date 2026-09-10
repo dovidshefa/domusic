@@ -504,12 +504,20 @@ function Index() {
   const addManyToPlaylist = async (playlistId: string, trackIds: string[]) => {
     const pl = playlists.find((p) => p.id === playlistId);
     if (!pl) return;
-    const fresh = trackIds.filter((id) => !pl.trackIds.includes(id));
-    if (fresh.length === 0) { setBulkMenu(false); return; }
-    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, ...fresh] } : p)));
     setBulkMenu(false);
+    // keep the on-screen order of the selected items
+    const order = tracks.map((t) => t.id);
+    const ordered = [...new Set(trackIds)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const fresh = ordered.filter((id) => !pl.trackIds.includes(id));
+    if (fresh.length === 0) { toast.info(`Already in ${pl.name}`); return; }
+    setPlaylists((pls) => pls.map((p) => (p.id === playlistId ? { ...p, trackIds: [...p.trackIds, ...fresh] } : p)));
     await supabase.from("playlist_tracks").insert(
       fresh.map((track_id, i) => ({ playlist_id: playlistId, track_id, position: pl.trackIds.length + i })),
+    );
+    const skipped = ordered.length - fresh.length;
+    toast.success(
+      `${fresh.length} ${fresh.length === 1 ? "song" : "songs"} added to ${pl.name}` +
+        (skipped > 0 ? ` · ${skipped} already there` : ""),
     );
   };
 
