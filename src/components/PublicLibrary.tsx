@@ -183,6 +183,10 @@ export function PublicLibrary(props: {
   const [hasMore, setHasMore] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkMenu, setBulkMenu] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const reqRef = useRef(0);
 
   useEffect(() => { if (fixedKind) setKind(fixedKind); }, [fixedKind]);
