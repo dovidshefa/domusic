@@ -161,6 +161,7 @@ export function PublicLibrary(props: {
   playlists: { id: string; name: string; trackIds: string[] }[];
   onAdd: (pt: PublicTrack, opts?: { play?: boolean }) => Promise<void>;
   onAddToPlaylist: (playlistId: string, pt: PublicTrack) => Promise<void>;
+  onAddManyToPlaylist?: (playlistId: string, pts: PublicTrack[]) => Promise<void>;
   onCreatePlaylist: () => void;
   fixedKind?: "audio" | "video";
   title?: string;
