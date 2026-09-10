@@ -167,7 +167,7 @@ export function PublicLibrary(props: {
   title?: string;
   subtitle?: string;
 }) {
-  const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onCreatePlaylist, fixedKind, title, subtitle } = props;
+  const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onAddManyToPlaylist, onCreatePlaylist, fixedKind, title, subtitle } = props;
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [sort, setSort] = useState("recent");
