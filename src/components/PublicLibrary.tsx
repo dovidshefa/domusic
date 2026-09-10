@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Globe2, Play, Plus, ListPlus, Loader2, Music2, Video, Users,
-  Flame, Clock, TrendingUp,
+  Flame, Clock, TrendingUp, CheckSquare, Square, CheckCheck, X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
