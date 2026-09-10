@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Globe2, Play, Plus, ListPlus, Loader2, Music2, Video, Users,
-  Flame, Clock, TrendingUp,
+  Flame, Clock, TrendingUp, CheckSquare, Square, CheckCheck, X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -60,14 +60,30 @@ type CardProps = {
   onAddToPlaylist: (playlistId: string) => void;
   onCreatePlaylist: () => void;
   compact?: boolean;
+  selectMode?: boolean;
+  checked?: boolean;
+  onToggleSelect?: () => void;
 };
 
 function PublicCard(p: CardProps) {
-  const { t, saved, mine, busy, menuOpen, onToggleMenu, playlists, onPlay, onAddMine, onAddToPlaylist, onCreatePlaylist, compact } = p;
+  const { t, saved, mine, busy, menuOpen, onToggleMenu, playlists, onPlay, onAddMine, onAddToPlaylist, onCreatePlaylist, compact, selectMode, checked, onToggleSelect } = p;
   return (
     <article
       data-public-card={t.id}
-      className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background transition duration-300 hover:-translate-y-1.5 hover:border-[var(--aurora-2)]/30 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)]">
+      onClick={selectMode ? (e) => { e.stopPropagation(); onToggleSelect?.(); } : undefined}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-b from-card to-background transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)] ${
+        selectMode && checked ? "border-[var(--aurora-2)] ring-2 ring-[var(--aurora-2)]/40" : "border-border hover:border-[var(--aurora-2)]/30"
+      } ${selectMode ? "cursor-pointer" : ""}`}>
+      {selectMode && (
+        <button
+          data-public-check={t.id}
+          onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+          aria-label={checked ? `Deselect ${t.song}` : `Select ${t.song}`}
+          aria-pressed={!!checked}
+          className="absolute right-3 top-3 z-30 rounded-lg bg-black/70 p-1.5 text-white backdrop-blur">
+          {checked ? <CheckSquare className="h-4 w-4 text-[var(--aurora-2)]" /> : <Square className="h-4 w-4" />}
+        </button>
+      )}
       <div className="relative aspect-square overflow-hidden">
         <img src={t.cover ?? `https://picsum.photos/seed/${encodeURIComponent(t.song)}/600/600`} alt={t.song}
           loading="lazy"
@@ -145,12 +161,13 @@ export function PublicLibrary(props: {
   playlists: { id: string; name: string; trackIds: string[] }[];
   onAdd: (pt: PublicTrack, opts?: { play?: boolean }) => Promise<void>;
   onAddToPlaylist: (playlistId: string, pt: PublicTrack) => Promise<void>;
+  onAddManyToPlaylist?: (playlistId: string, pts: PublicTrack[]) => Promise<void>;
   onCreatePlaylist: () => void;
   fixedKind?: "audio" | "video";
   title?: string;
   subtitle?: string;
 }) {
-  const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onCreatePlaylist, fixedKind, title, subtitle } = props;
+  const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onAddManyToPlaylist, onCreatePlaylist, fixedKind, title, subtitle } = props;
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [sort, setSort] = useState("recent");
@@ -166,6 +183,10 @@ export function PublicLibrary(props: {
   const [hasMore, setHasMore] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkMenu, setBulkMenu] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const reqRef = useRef(0);
 
   useEffect(() => { if (fixedKind) setKind(fixedKind); }, [fixedKind]);
@@ -229,11 +250,42 @@ export function PublicLibrary(props: {
     try { await fn(); await loadShelves(); } finally { setBusy(null); }
   };
 
+  const toggleSelect = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  // All items currently on screen, in display order (shelves first, then the grid).
+  const visible = useMemo(() => {
+    const seen = new Map<string, PublicTrack>();
+    for (const t of [...shelves.trending, ...shelves.recent, ...shelves.added, ...rows]) {
+      if (!seen.has(t.id)) seen.set(t.id, t);
+    }
+    return seen;
+  }, [shelves, rows]);
+
+  const addSelectedToPlaylist = async (playlistId: string) => {
+    const ordered = [...visible.keys()].filter((id) => selected.includes(id)).map((id) => visible.get(id)!);
+    if (ordered.length === 0) return;
+    setBulkMenu(false);
+    setBulkBusy(true);
+    try {
+      if (onAddManyToPlaylist) await onAddManyToPlaylist(playlistId, ordered);
+      else for (const pt of ordered) await onAddToPlaylist(playlistId, pt);
+      await loadShelves();
+      setSelected([]);
+      setSelectMode(false);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const card = (t: PublicTrack, compact?: boolean) => (
     <PublicCard
       key={t.id}
       t={t}
       compact={compact}
+      selectMode={selectMode}
+      checked={selected.includes(t.id)}
+      onToggleSelect={() => toggleSelect(t.id)}
       saved={savedSourceIds.has(t.id)}
       mine={myId === t.uploader_id}
       busy={busy === t.id}
@@ -301,8 +353,62 @@ export function PublicLibrary(props: {
               className="rounded-full border border-border bg-secondary/60 px-3.5 py-2 text-[11px] font-semibold focus:outline-none">
               {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
+            <button
+              data-testid="public-select-toggle"
+              onClick={(e) => { e.stopPropagation(); setSelectMode((s) => !s); setSelected([]); setBulkMenu(false); }}
+              className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11px] font-semibold transition ${
+                selectMode ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/10 text-[var(--aurora-2)]" : "border-border bg-secondary/60 hover:border-[var(--aurora-2)]/40"
+              }`}>
+              <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? "Done" : "Select"}
+            </button>
           </div>
         </div>
+
+        {selectMode && (
+          <div onClick={(e) => e.stopPropagation()} className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--aurora-2)]/30 bg-[var(--aurora-2)]/5 p-3">
+            <span data-testid="public-selected-count" className="text-xs font-bold">{selected.length} selected</span>
+            <button onClick={() => setSelected([...visible.keys()])}
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-2)]">
+              <CheckCheck className="h-3.5 w-3.5" /> Select all
+            </button>
+            <button onClick={() => setSelected([])}
+              className="rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+              Clear
+            </button>
+            <div className="relative">
+              <button data-testid="public-bulk-add" onClick={() => setBulkMenu((b) => !b)} disabled={selected.length === 0 || bulkBusy}
+                className="bg-aurora flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-bold text-primary-foreground transition hover:brightness-110 disabled:opacity-40">
+                {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ListPlus className="h-3.5 w-3.5" />} Add to Playlist
+              </button>
+              {bulkMenu && (
+                <div className="absolute left-0 top-10 z-40 w-60 overflow-hidden rounded-xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
+                  <div className="border-b border-border px-3 py-2 text-[10px] font-bold tracking-widest text-muted-foreground">
+                    ADD {selected.length} ITEM{selected.length !== 1 ? "S" : ""} TO
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {playlists.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No playlists yet.</div>}
+                    {playlists.map((pl) => (
+                      <button key={pl.id} onClick={() => void addSelectedToPlaylist(pl.id)}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-secondary">
+                        <span className="truncate">{pl.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{pl.trackIds.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => { setBulkMenu(false); onCreatePlaylist(); }}
+                    className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs text-[var(--aurora-2)] hover:bg-secondary">
+                    <Plus className="h-3 w-3" /> New playlist
+                  </button>
+                </div>
+              )}
+            </div>
+            <button onClick={() => { setSelectMode(false); setSelected([]); setBulkMenu(false); }}
+              className="ml-auto flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" /> Cancel
+            </button>
+          </div>
+        )}
+
 
         {genres.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
