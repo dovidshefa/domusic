@@ -353,8 +353,62 @@ export function PublicLibrary(props: {
               className="rounded-full border border-border bg-secondary/60 px-3.5 py-2 text-[11px] font-semibold focus:outline-none">
               {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
+            <button
+              data-testid="public-select-toggle"
+              onClick={(e) => { e.stopPropagation(); setSelectMode((s) => !s); setSelected([]); setBulkMenu(false); }}
+              className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[11px] font-semibold transition ${
+                selectMode ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/10 text-[var(--aurora-2)]" : "border-border bg-secondary/60 hover:border-[var(--aurora-2)]/40"
+              }`}>
+              <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? "Done" : "Select"}
+            </button>
           </div>
         </div>
+
+        {selectMode && (
+          <div onClick={(e) => e.stopPropagation()} className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--aurora-2)]/30 bg-[var(--aurora-2)]/5 p-3">
+            <span data-testid="public-selected-count" className="text-xs font-bold">{selected.length} selected</span>
+            <button onClick={() => setSelected([...visible.keys()])}
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold hover:text-[var(--aurora-2)]">
+              <CheckCheck className="h-3.5 w-3.5" /> Select all
+            </button>
+            <button onClick={() => setSelected([])}
+              className="rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+              Clear
+            </button>
+            <div className="relative">
+              <button data-testid="public-bulk-add" onClick={() => setBulkMenu((b) => !b)} disabled={selected.length === 0 || bulkBusy}
+                className="bg-aurora flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-bold text-primary-foreground transition hover:brightness-110 disabled:opacity-40">
+                {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ListPlus className="h-3.5 w-3.5" />} Add to Playlist
+              </button>
+              {bulkMenu && (
+                <div className="absolute left-0 top-10 z-40 w-60 overflow-hidden rounded-xl border border-border bg-panel/95 shadow-2xl backdrop-blur-xl">
+                  <div className="border-b border-border px-3 py-2 text-[10px] font-bold tracking-widest text-muted-foreground">
+                    ADD {selected.length} ITEM{selected.length !== 1 ? "S" : ""} TO
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {playlists.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No playlists yet.</div>}
+                    {playlists.map((pl) => (
+                      <button key={pl.id} onClick={() => void addSelectedToPlaylist(pl.id)}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-secondary">
+                        <span className="truncate">{pl.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{pl.trackIds.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => { setBulkMenu(false); onCreatePlaylist(); }}
+                    className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-xs text-[var(--aurora-2)] hover:bg-secondary">
+                    <Plus className="h-3 w-3" /> New playlist
+                  </button>
+                </div>
+              )}
+            </div>
+            <button onClick={() => { setSelectMode(false); setSelected([]); setBulkMenu(false); }}
+              className="ml-auto flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" /> Cancel
+            </button>
+          </div>
+        )}
+
 
         {genres.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
