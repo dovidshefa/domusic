@@ -250,11 +250,42 @@ export function PublicLibrary(props: {
     try { await fn(); await loadShelves(); } finally { setBusy(null); }
   };
 
+  const toggleSelect = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  // All items currently on screen, in display order (shelves first, then the grid).
+  const visible = useMemo(() => {
+    const seen = new Map<string, PublicTrack>();
+    for (const t of [...shelves.trending, ...shelves.recent, ...shelves.added, ...rows]) {
+      if (!seen.has(t.id)) seen.set(t.id, t);
+    }
+    return seen;
+  }, [shelves, rows]);
+
+  const addSelectedToPlaylist = async (playlistId: string) => {
+    const ordered = [...visible.keys()].filter((id) => selected.includes(id)).map((id) => visible.get(id)!);
+    if (ordered.length === 0) return;
+    setBulkMenu(false);
+    setBulkBusy(true);
+    try {
+      if (onAddManyToPlaylist) await onAddManyToPlaylist(playlistId, ordered);
+      else for (const pt of ordered) await onAddToPlaylist(playlistId, pt);
+      await loadShelves();
+      setSelected([]);
+      setSelectMode(false);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const card = (t: PublicTrack, compact?: boolean) => (
     <PublicCard
       key={t.id}
       t={t}
       compact={compact}
+      selectMode={selectMode}
+      checked={selected.includes(t.id)}
+      onToggleSelect={() => toggleSelect(t.id)}
       saved={savedSourceIds.has(t.id)}
       mine={myId === t.uploader_id}
       busy={busy === t.id}
