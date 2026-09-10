@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { UploadPanel } from "@/components/UploadPanel";
 import { useUploadManager } from "@/lib/upload-manager";
 import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
