@@ -1382,7 +1382,7 @@ function Index() {
               {filtered.map((t) => {
                 const active = t.id === currentId;
                 return (
-                  <article key={t.id} onClick={() => playTrack(t.id)}
+                  <article key={t.id} onClick={() => (selectMode && view.type !== "artists" ? toggleSelect(t.id) : playTrack(t.id))}
                     data-track-id={t.id}
                     draggable={view.type === "playlist"}
                     onDragStart={view.type === "playlist" ? () => { dragIdRef.current = t.id; } : undefined}
@@ -1396,6 +1396,14 @@ function Index() {
                       "hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)]",
                       active ? "border-[var(--aurora-2)]/50 shadow-[0_0_30px_-5px_rgba(168,85,247,0.4)]" : "border-border hover:border-[var(--aurora-2)]/30"].join(" ")}>
                     <div className="relative aspect-square overflow-hidden">
+                      {selectMode && view.type !== "artists" && (
+                        <button data-track-check={t.id} aria-pressed={selected.includes(t.id)}
+                          aria-label={selected.includes(t.id) ? `Deselect ${t.song}` : `Select ${t.song}`}
+                          onClick={(e) => { e.stopPropagation(); toggleSelect(t.id); }}
+                          className="absolute left-3 top-3 z-30 rounded-lg bg-black/70 p-1.5 text-white backdrop-blur">
+                          {selected.includes(t.id) ? <CheckSquare className="h-4 w-4 text-[var(--aurora-2)]" /> : <Square className="h-4 w-4" />}
+                        </button>
+                      )}
                       <img src={t.cover} alt={t.song} className="h-full w-full object-cover transition duration-700 group-hover:scale-110" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-transparent" />
                       <div className="absolute right-3 top-3 flex gap-1.5">
