@@ -1577,7 +1577,12 @@ function Index() {
           </div>
 
           <div className="hidden items-center justify-end gap-3 md:flex">
-            <button onClick={() => setShowEq((s) => !s)} className={`transition ${showEq ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`} title="Equalizer">
+            <button data-testid="btn-8d" onClick={() => { setShow8d((s) => !s); setShowEq(false); }} title="8D Spatial Audio"
+              className={`relative rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${spatialOn ? "border-[var(--aurora-3)] text-[var(--aurora-3)] shadow-[0_0_12px_var(--aurora-3)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              8D
+              {spatialOn && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-ping rounded-full bg-[var(--aurora-3)]" />}
+            </button>
+            <button onClick={() => { setShowEq((s) => !s); setShow8d(false); }} className={`transition ${showEq ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`} title="Equalizer">
               <Sliders className="h-4 w-4" />
             </button>
             {current && (
@@ -1713,6 +1718,9 @@ function Index() {
               <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
               </button>
+              <button data-testid="mobile-8d" onClick={() => { setShowMobileMenu(false); setShow8d(true); setShowEq(false); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${spatialOn ? "border-[var(--aurora-3)]/50 text-[var(--aurora-3)]" : ""}`}>
+                <span className="font-display text-base font-bold leading-5">8D</span><span className="text-[10px] font-semibold">{spatialOn ? "8D on" : "8D"}</span>
+              </button>
               <button onClick={() => { setShowMobileMenu(false); toggleFullscreen(); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Maximize2 className="h-5 w-5" /><span className="text-[10px] font-semibold">Full</span>
               </button>
@@ -1739,6 +1747,48 @@ function Index() {
                 className="flex-1 accent-[var(--aurora-2)]" />
             </div>
             <p className="mt-3 text-center text-[10px] text-muted-foreground">Swipe ← → on the cover to skip tracks · ↑↓ to skip 10s</p>
+          </div>
+        </div>
+      )}
+
+      {/* 8D spatial audio popover */}
+      {show8d && (
+        <div data-testid="panel-8d" className="absolute bottom-28 right-4 z-40 w-[300px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-24">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-display text-lg">8D Spatial Audio</div>
+              <div className="text-[10px] text-muted-foreground">Best with headphones 🎧</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest">
+                <input data-testid="toggle-8d" type="checkbox" checked={spatialOn} onChange={(e) => setSpatialOn(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--aurora-3)]" />
+                On
+              </label>
+              <button onClick={() => setShow8d(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+          <div className="relative mx-auto mb-4 h-36 w-36 rounded-full border border-border bg-secondary/40">
+            <div className="absolute inset-4 rounded-full border border-dashed border-border" />
+            <div className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-base">🎧</div>
+            <span className="absolute left-1/2 top-1 -translate-x-1/2 text-[8px] font-bold text-muted-foreground">FRONT</span>
+            <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-muted-foreground">BACK</span>
+            <div className="bg-aurora absolute h-4 w-4 rounded-full shadow-[0_0_16px_var(--aurora-3)] transition-opacity"
+              style={{ left: `calc(50% + ${Math.sin(spatialAngle) * 56}px - 8px)`, top: `calc(50% - ${Math.cos(spatialAngle) * 56}px - 8px)`, opacity: spatialOn ? 1 : 0.3 }} />
+          </div>
+          <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <span>Orbit speed</span><span className="tabular-nums text-foreground">{spatialPeriod}s / lap</span>
+          </div>
+          <input type="range" min={3} max={16} step={1} value={19 - spatialPeriod}
+            onChange={(e) => setSpatialPeriod(19 - parseInt(e.target.value))}
+            className="fader w-full" style={{ ["--val" as string]: `${((16 - spatialPeriod) / 13) * 100}%` }} />
+          <div className="mt-1 flex justify-between text-[9px] text-muted-foreground"><span>Slow</span><span>Fast</span></div>
+          <div className="mt-3 flex gap-1.5">
+            {([[1, "Clockwise ↻"], [-1, "Counter ↺"]] as const).map(([d, label]) => (
+              <button key={d} onClick={() => setSpatialDir(d)}
+                className={`flex-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold transition ${spatialDir === d ? "border-[var(--aurora-3)] text-[var(--aurora-3)]" : "border-border bg-secondary/60"}`}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       )}
