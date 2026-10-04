@@ -118,6 +118,18 @@ function Index() {
   const fileRef = useRef<HTMLInputElement>(null);
   const playerStageRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const spatialRef = useRef<{ panner: PannerNode; dry: GainNode; wet: GainNode } | null>(null);
+  const [spatialOn, setSpatialOn] = useState(false);
+  const [spatialPeriod, setSpatialPeriod] = useState(8);
+  const [spatialDir, setSpatialDir] = useState<1 | -1>(1);
+  const [spatialAngle, setSpatialAngle] = useState(0);
+  const [show8d, setShow8d] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("dovid-8d-v1");
+      if (raw) { const v = JSON.parse(raw); setSpatialPeriod(v.period ?? 8); setSpatialDir(v.dir === -1 ? -1 : 1); }
+    } catch {}
+  }, []);
   const filtersRef = useRef<BiquadFilterNode[]>([]);
   const sourcesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
 
@@ -827,16 +839,28 @@ function Index() {
           filter.gain.value = eqGains[i] ?? 0;
           return filter;
         });
+        // 8D output stage: last filter -> dry -> dest, and -> HRTF panner -> wet -> dest
+        const c = audioCtxRef.current!;
+        const panner = c.createPanner();
+        panner.panningModel = "HRTF";
+        panner.distanceModel = "inverse";
+        panner.refDistance = 1;
+        panner.positionX.value = 0; panner.positionY.value = 0; panner.positionZ.value = -1;
+        const dry = c.createGain(); const wet = c.createGain();
+        dry.gain.value = 1; wet.gain.value = 0;
+        const last = filtersRef.current[filtersRef.current.length - 1];
+        last.connect(dry); dry.connect(c.destination);
+        last.connect(panner); panner.connect(wet); wet.connect(c.destination);
+        spatialRef.current = { panner, dry, wet };
       }
       const ctx = audioCtxRef.current!;
       if (ctx.state === "suspended") ctx.resume();
       if (!sourcesRef.current.has(el)) {
         const src = ctx.createMediaElementSource(el);
         sourcesRef.current.set(el, src);
-        // chain: src -> f0 -> f1 ... -> destination
+        // chain: src -> f0 -> f1 ... -> output stage
         let node: AudioNode = src;
         filtersRef.current.forEach((f) => { node.connect(f); node = f; });
-        node.connect(ctx.destination);
       }
     } catch (err) {
       console.warn("EQ setup failed", err);
@@ -844,10 +868,36 @@ function Index() {
   }, [eqGains]);
 
   useEffect(() => {
-    if (!eqEnabled) return;
+    if (!eqEnabled && !spatialOn) return;
     ensureEqGraph(audioRef.current);
     if (isVideo) ensureEqGraph(videoRef.current);
-  }, [eqEnabled, currentId, isVideo, ensureEqGraph]);
+  }, [eqEnabled, spatialOn, currentId, isVideo, ensureEqGraph]);
+
+  // 8D orbit: crossfade dry/wet and sweep the HRTF panner around the listener
+  useEffect(() => {
+    try { localStorage.setItem("dovid-8d-v1", JSON.stringify({ on: spatialOn, period: spatialPeriod, dir: spatialDir })); } catch {}
+    const s = spatialRef.current; const ctx = audioCtxRef.current;
+    if (s && ctx) {
+      const t = ctx.currentTime;
+      s.dry.gain.setTargetAtTime(spatialOn ? 0 : 1, t, 0.08);
+      s.wet.gain.setTargetAtTime(spatialOn ? 1.15 : 0, t, 0.08);
+    }
+    if (!spatialOn) { setSpatialAngle(0); return; }
+    let raf = 0; const start = performance.now();
+    const tick = (now: number) => {
+      const theta = (((now - start) / 1000) / spatialPeriod) * Math.PI * 2 * spatialDir;
+      const sp = spatialRef.current; const c = audioCtxRef.current;
+      if (sp && c) {
+        const r = 1.5;
+        sp.panner.positionX.setTargetAtTime(r * Math.sin(theta), c.currentTime, 0.03);
+        sp.panner.positionZ.setTargetAtTime(-r * Math.cos(theta), c.currentTime, 0.03);
+      }
+      setSpatialAngle(theta);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [spatialOn, spatialPeriod, spatialDir, currentId]);
 
   useEffect(() => {
     filtersRef.current.forEach((f, i) => {
