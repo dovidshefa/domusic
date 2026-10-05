@@ -426,6 +426,41 @@ function Index() {
     handleNext();
   };
 
+  // Headphone / Bluetooth / lock-screen media buttons (Media Session API)
+  const mediaHandlersRef = useRef({ next: handleNext, prev: handlePrev });
+  mediaHandlersRef.current = { next: handleNext, prev: handlePrev };
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    const el = () => (isVideo ? videoRef.current : audioRef.current);
+    const set = (a: MediaSessionAction, h: MediaSessionActionHandler | null) => { try { ms.setActionHandler(a, h); } catch {} };
+    set("play", () => setPlaying(true));
+    set("pause", () => setPlaying(false));
+    set("stop", () => setPlaying(false));
+    set("nexttrack", () => mediaHandlersRef.current.next());
+    set("previoustrack", () => mediaHandlersRef.current.prev());
+    set("seekforward", (d) => { const m = el(); if (m) m.currentTime = Math.min(m.duration || 0, m.currentTime + (d.seekOffset ?? 10)); });
+    set("seekbackward", (d) => { const m = el(); if (m) m.currentTime = Math.max(0, m.currentTime - (d.seekOffset ?? 10)); });
+    set("seekto", (d) => { const m = el(); if (m && d.seekTime != null) m.currentTime = d.seekTime; });
+  }, [isVideo]);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator) || !current) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: current.song, artist: current.artist, album: current.album,
+        artwork: current.cover ? [{ src: current.cover, sizes: "512x512" }] : [],
+      });
+    } catch {}
+  }, [current?.id, current?.song, current?.artist, current?.album, current?.cover]);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+  }, [playing]);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator) || !duration || !isFinite(duration)) return;
+    try { navigator.mediaSession.setPositionState({ duration, position: Math.min(progress, duration), playbackRate: 1 }); } catch {}
+  }, [Math.floor(progress), duration]);
+
   const upload = useUploadManager({
     userId: user?.id ?? null,
     getExisting: useCallback(() => tracksRef.current.map((t) => ({ id: t.id, song: t.song, storage_path: t.storage_path })), []),
