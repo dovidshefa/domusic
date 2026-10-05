@@ -60,6 +60,36 @@ const fmt = (s: number) => {
   return `${m}:${r.toString().padStart(2, "0")}`;
 };
 
+const ROOMS = {
+  none: { label: "Off", decay: 0, tail: 0 },
+  studio: { label: "Studio", decay: 0.4, tail: 6 },
+  hall: { label: "Concert Hall", decay: 1.8, tail: 3 },
+  cathedral: { label: "Cathedral", decay: 3.5, tail: 2 },
+  tunnel: { label: "Cyber Tunnel", decay: 2.4, tail: 1.5 },
+} as const;
+type RoomName = keyof typeof ROOMS;
+
+function buildImpulse(ctx: BaseAudioContext, room: RoomName): AudioBuffer {
+  const { decay, tail } = ROOMS[room];
+  const len = Math.max(1, Math.floor(ctx.sampleRate * Math.max(0.05, decay)));
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      let s = (Math.random() * 2 - 1) * Math.pow(1 - t, tail);
+      if (room === "cathedral") { lp = lp * 0.6 + s * 0.4; s = lp; }
+      if (room === "tunnel") {
+        const echo = Math.floor(ctx.sampleRate * (ch ? 0.13 : 0.11));
+        if (i % echo < 200) s += (ch ? 0.5 : 0.6) * Math.pow(1 - t, 1.2);
+      }
+      d[i] = s;
+    }
+  }
+  return buf;
+}
+
 function Index() {
   const navigate = useNavigate();
   const [user, setUser] = useState<{ id: string; name: string; avatar: string | null; email: string } | null>(null);
@@ -118,16 +148,41 @@ function Index() {
   const fileRef = useRef<HTMLInputElement>(null);
   const playerStageRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const spatialRef = useRef<{ panner: PannerNode; dry: GainNode; wet: GainNode } | null>(null);
+  const spatialRef = useRef<{ panner: PannerNode; dry: GainNode; wet: GainNode; convolver: ConvolverNode; roomGain: GainNode } | null>(null);
   const [spatialOn, setSpatialOn] = useState(false);
   const [spatialPeriod, setSpatialPeriod] = useState(8);
   const [spatialDir, setSpatialDir] = useState<1 | -1>(1);
   const [spatialAngle, setSpatialAngle] = useState(0);
   const [show8d, setShow8d] = useState(false);
+  const [spatialMode, setSpatialMode] = useState<"orbit" | "manual">("orbit");
+  const [manualPos, setManualPos] = useState<{ angle: number; radius: number }>({ angle: 0, radius: 1 });
+  const [spatialDistance, setSpatialDistance] = useState(1.5);
+  const [spatialRoom, setSpatialRoom] = useState<RoomName>("none");
+  const [spatialRoomMix, setSpatialRoomMix] = useState(0.5);
+  const radarDragRef = useRef(false);
+  const dispRadius = spatialMode === "manual" ? manualPos.radius : 1;
+  const placeFromPointer = (e: React.PointerEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    const angle = Math.atan2(dx, -dy);
+    const radius = Math.min(1, Math.max(0.15, Math.hypot(dx, dy) / 64));
+    setSpatialMode("manual");
+    setManualPos({ angle, radius });
+    if (!spatialOn) setSpatialOn(true);
+  };
   useEffect(() => {
     try {
       const raw = localStorage.getItem("dovid-8d-v1");
-      if (raw) { const v = JSON.parse(raw); setSpatialPeriod(v.period ?? 8); setSpatialDir(v.dir === -1 ? -1 : 1); }
+      if (raw) {
+        const v = JSON.parse(raw);
+        setSpatialPeriod(v.period ?? 8); setSpatialDir(v.dir === -1 ? -1 : 1);
+        if (v.mode === "manual") setSpatialMode("manual");
+        if (typeof v.distance === "number") setSpatialDistance(v.distance);
+        if (v.room && v.room in ROOMS) setSpatialRoom(v.room);
+        if (typeof v.roomMix === "number") setSpatialRoomMix(v.roomMix);
+        if (v.manual && typeof v.manual.angle === "number") setManualPos(v.manual);
+      }
     } catch {}
   }, []);
   const filtersRef = useRef<BiquadFilterNode[]>([]);
@@ -848,10 +903,13 @@ function Index() {
         panner.positionX.value = 0; panner.positionY.value = 0; panner.positionZ.value = -1;
         const dry = c.createGain(); const wet = c.createGain();
         dry.gain.value = 1; wet.gain.value = 0;
+        const convolver = c.createConvolver();
+        const roomGain = c.createGain(); roomGain.gain.value = 0;
         const last = filtersRef.current[filtersRef.current.length - 1];
         last.connect(dry); dry.connect(c.destination);
         last.connect(panner); panner.connect(wet); wet.connect(c.destination);
-        spatialRef.current = { panner, dry, wet };
+        panner.connect(convolver); convolver.connect(roomGain); roomGain.connect(c.destination);
+        spatialRef.current = { panner, dry, wet, convolver, roomGain };
       }
       const ctx = audioCtxRef.current!;
       if (ctx.state === "suspended") ctx.resume();
@@ -873,31 +931,47 @@ function Index() {
     if (isVideo) ensureEqGraph(videoRef.current);
   }, [eqEnabled, spatialOn, currentId, isVideo, ensureEqGraph]);
 
-  // 8D orbit: crossfade dry/wet and sweep the HRTF panner around the listener
+  // 8D orbit / manual: crossfade dry/wet and position the HRTF panner
   useEffect(() => {
-    try { localStorage.setItem("dovid-8d-v1", JSON.stringify({ on: spatialOn, period: spatialPeriod, dir: spatialDir })); } catch {}
+    try { localStorage.setItem("dovid-8d-v1", JSON.stringify({ on: spatialOn, period: spatialPeriod, dir: spatialDir, mode: spatialMode, distance: spatialDistance, room: spatialRoom, roomMix: spatialRoomMix, manual: manualPos })); } catch {}
     const s = spatialRef.current; const ctx = audioCtxRef.current;
     if (s && ctx) {
       const t = ctx.currentTime;
       s.dry.gain.setTargetAtTime(spatialOn ? 0 : 1, t, 0.08);
       s.wet.gain.setTargetAtTime(spatialOn ? 1.15 : 0, t, 0.08);
+      s.roomGain.gain.setTargetAtTime(spatialOn && spatialRoom !== "none" ? spatialRoomMix * 1.4 : 0, t, 0.1);
+    }
+    const setPos = (theta: number, rFrac: number) => {
+      const sp = spatialRef.current; const c = audioCtxRef.current;
+      if (sp && c) {
+        const r = Math.max(0.3, spatialDistance * rFrac);
+        sp.panner.positionX.setTargetAtTime(r * Math.sin(theta), c.currentTime, 0.03);
+        sp.panner.positionZ.setTargetAtTime(-r * Math.cos(theta), c.currentTime, 0.03);
+      }
+    };
+    if (spatialMode === "manual") {
+      setPos(manualPos.angle, manualPos.radius);
+      setSpatialAngle(manualPos.angle);
+      return;
     }
     if (!spatialOn) { setSpatialAngle(0); return; }
     let raf = 0; const start = performance.now();
     const tick = (now: number) => {
       const theta = (((now - start) / 1000) / spatialPeriod) * Math.PI * 2 * spatialDir;
-      const sp = spatialRef.current; const c = audioCtxRef.current;
-      if (sp && c) {
-        const r = 1.5;
-        sp.panner.positionX.setTargetAtTime(r * Math.sin(theta), c.currentTime, 0.03);
-        sp.panner.positionZ.setTargetAtTime(-r * Math.cos(theta), c.currentTime, 0.03);
-      }
+      setPos(theta, 1);
       setSpatialAngle(theta);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [spatialOn, spatialPeriod, spatialDir, currentId]);
+  }, [spatialOn, spatialPeriod, spatialDir, currentId, spatialMode, manualPos, spatialDistance, spatialRoom, spatialRoomMix]);
+
+  // Rebuild room impulse response when room changes
+  useEffect(() => {
+    const s = spatialRef.current; const ctx = audioCtxRef.current;
+    if (!s || !ctx || spatialRoom === "none") return;
+    s.convolver.buffer = buildImpulse(ctx, spatialRoom);
+  }, [spatialRoom, spatialOn, currentId]);
 
   useEffect(() => {
     filtersRef.current.forEach((f, i) => {
@@ -1767,14 +1841,34 @@ function Index() {
               <button onClick={() => setShow8d(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
             </div>
           </div>
-          <div className="relative mx-auto mb-4 h-36 w-36 rounded-full border border-border bg-secondary/40">
-            <div className="absolute inset-4 rounded-full border border-dashed border-border" />
-            <div className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-base">🎧</div>
-            <span className="absolute left-1/2 top-1 -translate-x-1/2 text-[8px] font-bold text-muted-foreground">FRONT</span>
-            <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-muted-foreground">BACK</span>
-            <div className="bg-aurora absolute h-4 w-4 rounded-full shadow-[0_0_16px_var(--aurora-3)] transition-opacity"
-              style={{ left: `calc(50% + ${Math.sin(spatialAngle) * 56}px - 8px)`, top: `calc(50% - ${Math.cos(spatialAngle) * 56}px - 8px)`, opacity: spatialOn ? 1 : 0.3 }} />
+          <div className="mb-2 flex gap-1.5">
+            {([["orbit", "Auto Orbit"], ["manual", "Manual Lock"]] as const).map(([m, label]) => (
+              <button key={m} data-testid={`8d-mode-${m}`} onClick={() => setSpatialMode(m)}
+                className={`flex-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold transition ${spatialMode === m ? "border-[var(--aurora-3)] text-[var(--aurora-3)]" : "border-border bg-secondary/60"}`}>
+                {label}
+              </button>
+            ))}
           </div>
+          <div data-testid="8d-radar"
+            className="relative mx-auto mb-2 h-40 w-40 cursor-crosshair touch-none select-none rounded-full border border-border bg-secondary/40"
+            onPointerDown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); radarDragRef.current = true; placeFromPointer(e); }}
+            onPointerMove={(e) => { if (radarDragRef.current) placeFromPointer(e); }}
+            onPointerUp={() => { radarDragRef.current = false; }}
+            onPointerCancel={() => { radarDragRef.current = false; }}>
+            <div className="pointer-events-none absolute inset-4 rounded-full border border-dashed border-border" />
+            <div className="pointer-events-none absolute inset-10 rounded-full border border-dashed border-border/60" />
+            <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-secondary text-base">🎧</div>
+            <span className="pointer-events-none absolute left-1/2 top-1 -translate-x-1/2 text-[8px] font-bold text-muted-foreground">FRONT</span>
+            <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-muted-foreground">BACK</span>
+            <span className="pointer-events-none absolute left-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-muted-foreground">L</span>
+            <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-[8px] font-bold text-muted-foreground">R</span>
+            <div className="bg-aurora pointer-events-none absolute h-4 w-4 rounded-full shadow-[0_0_16px_var(--aurora-3)] transition-opacity"
+              style={{ left: `calc(50% + ${Math.sin(spatialAngle) * 64 * dispRadius}px - 8px)`, top: `calc(50% - ${Math.cos(spatialAngle) * 64 * dispRadius}px - 8px)`, opacity: spatialOn ? 1 : 0.3 }} />
+          </div>
+          <div className="mb-3 text-center text-[9px] text-muted-foreground">
+            {spatialMode === "manual" ? `Drag the orb · ${Math.round(((spatialAngle * 180) / Math.PI % 360 + 360) % 360)}° · ${(spatialDistance * dispRadius).toFixed(1)}m` : "Touch the radar to pin the sound anywhere"}
+          </div>
+          {spatialMode === "orbit" && (<>
           <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             <span>Orbit speed</span><span className="tabular-nums text-foreground">{spatialPeriod}s / lap</span>
           </div>
@@ -1790,6 +1884,31 @@ function Index() {
               </button>
             ))}
           </div>
+          </>)}
+          <div className="mb-1 mt-4 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <span>Distance</span><span className="tabular-nums text-foreground">{spatialDistance.toFixed(1)}m</span>
+          </div>
+          <input data-testid="8d-distance" type="range" min={0.5} max={8} step={0.5} value={spatialDistance}
+            onChange={(e) => setSpatialDistance(parseFloat(e.target.value))}
+            className="fader w-full" style={{ ["--val" as string]: `${((spatialDistance - 0.5) / 7.5) * 100}%` }} />
+          <div className="mt-1 flex justify-between text-[9px] text-muted-foreground"><span>Whisper</span><span>Grand venue</span></div>
+          <div className="mb-1.5 mt-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Room</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(Object.keys(ROOMS) as RoomName[]).map((name) => (
+              <button key={name} data-testid={`8d-room-${name}`} onClick={() => setSpatialRoom(name)}
+                className={`rounded-full border px-2 py-1 text-[10px] font-semibold transition ${spatialRoom === name ? "border-[var(--aurora-3)] text-[var(--aurora-3)]" : "border-border bg-secondary/60"}`}>
+                {ROOMS[name].label}
+              </button>
+            ))}
+          </div>
+          {spatialRoom !== "none" && (<>
+            <div className="mb-1 mt-3 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span>Room mix</span><span className="tabular-nums text-foreground">{Math.round(spatialRoomMix * 100)}%</span>
+            </div>
+            <input type="range" min={0} max={1} step={0.05} value={spatialRoomMix}
+              onChange={(e) => setSpatialRoomMix(parseFloat(e.target.value))}
+              className="fader w-full" style={{ ["--val" as string]: `${spatialRoomMix * 100}%` }} />
+          </>)}
         </div>
       )}
 
