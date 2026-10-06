@@ -1,3 +1,4 @@
+import { normalizeTitle } from "./duplicates";
 import { useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -198,7 +199,7 @@ export function useUploadManager(opts: {
         const id = crypto.randomUUID();
         filesRef.current.set(id, file);
         const base = file.name.replace(/\.[^.]+$/, "");
-        const dup = existing.find((t) => t.song.toLowerCase() === base.toLowerCase());
+        const dup = existing.find((t) => normalizeTitle(t.song) === normalizeTitle(base));
         const item: UploadItem = {
           id,
           name: file.name,
