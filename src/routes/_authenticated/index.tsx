@@ -1324,6 +1324,7 @@ function Index() {
             </div>
           </div>
 
+          {showDupes && <DuplicatesDialog tracks={tracks} onClose={() => setShowDupes(false)} onDelete={deleteMany} />}
           <UploadPanel
             items={upload.items}
             onCancel={upload.cancel}

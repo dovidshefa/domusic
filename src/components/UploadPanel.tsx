@@ -57,7 +57,7 @@ export function UploadPanel({
               </div>
               {i.status === "duplicate" ? (
                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className="flex items-center gap-1 text-[11px] text-amber-300"><Copy className="h-3 w-3" /> Already in your library</span>
+                  <span className="flex items-center gap-1 text-[11px] text-amber-300"><Copy className="h-3 w-3" /> {i.duplicateName ? `You already have “${i.duplicateName}” — add it again?` : "Already in your library — add it again?"}</span>
                   <button onClick={() => onResolveDuplicate(i.id, "replace")} className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold hover:bg-secondary/70">Replace</button>
                   <button onClick={() => onResolveDuplicate(i.id, "keep")} className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold hover:bg-secondary/70">Keep both</button>
                   <button onClick={() => onResolveDuplicate(i.id, "skip")} className="rounded-full px-2.5 py-1 text-[10px] font-bold text-muted-foreground hover:text-foreground">Skip</button>

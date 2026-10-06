@@ -17,6 +17,7 @@ export type UploadItem = {
   error?: string;
   /** existing track with the same name, when status === "duplicate" */
   duplicateOf?: string;
+  duplicateName?: string;
 };
 
 export type UploadedTrack = {
@@ -208,6 +209,7 @@ export function useUploadManager(opts: {
           progress: 0,
           status: dup ? "duplicate" : "queued",
           duplicateOf: dup?.id,
+          duplicateName: dup?.song,
         };
         fresh.push(item);
         if (!dup) toStart.push(id);
