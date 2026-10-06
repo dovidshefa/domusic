@@ -5,11 +5,12 @@ import {
   Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
-  CheckSquare, Square, CheckCheck, Video, Globe2, Lock,
+  CheckSquare, Square, CheckCheck, Video, Globe2, Lock, Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { UploadPanel } from "@/components/UploadPanel";
 import { DuplicatesDialog } from "@/components/DuplicatesDialog";
+import { MoodPlaylistDialog } from "@/components/MoodPlaylistDialog";
 import { findDuplicateGroups } from "@/lib/duplicates";
 import { useUploadManager } from "@/lib/upload-manager";
 import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
@@ -117,6 +118,7 @@ function Index() {
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [showDupes, setShowDupes] = useState(false);
+  const [showMood, setShowMood] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkMenu, setBulkMenu] = useState(false);
   const [visibleCount, setVisibleCount] = useState(120);
@@ -758,6 +760,19 @@ function Index() {
     setView({ type: "playlist", id: pl.id });
   };
 
+  const createAiPlaylist = async (name: string, trackIds: string[]) => {
+    if (!user) return;
+    const { data, error } = await supabase.from("playlists").insert({ user_id: user.id, name }).select().single();
+    if (error || !data) { toast.error("Couldn't save the playlist"); return; }
+    const { error: e2 } = await supabase.from("playlist_tracks").insert(
+      trackIds.map((track_id, position) => ({ playlist_id: data.id, track_id, position })),
+    );
+    if (e2) toast.error("Some songs couldn't be added");
+    setPlaylists((p) => [...p, { id: data.id, name: data.name, trackIds }]);
+    setView({ type: "playlist", id: data.id });
+    toast.success(`${trackIds.length} songs added to ${data.name}`);
+  };
+
   const deletePlaylist = async (id: string) => {
     if (!confirm("Delete this playlist?")) return;
     setPlaylists((p) => p.filter((x) => x.id !== id));
@@ -1325,6 +1340,7 @@ function Index() {
           </div>
 
           {showDupes && <DuplicatesDialog tracks={tracks} onClose={() => setShowDupes(false)} onDelete={deleteMany} />}
+          <MoodPlaylistDialog open={showMood} onClose={() => setShowMood(false)} onCreate={createAiPlaylist} />
           <UploadPanel
             items={upload.items}
             onCancel={upload.cancel}
@@ -1339,6 +1355,12 @@ function Index() {
               <p className="mt-1 text-xs text-muted-foreground">{isPublicView ? "Shared by the DoMusic community" : `${filtered.length} tracks`}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {!isPublicView && (
+                <button data-testid="mood-mix-btn" onClick={() => setShowMood(true)}
+                  className="flex items-center gap-2 rounded-full border border-[var(--aurora-2)]/50 bg-[var(--aurora-2)]/10 px-4 py-2 text-xs font-semibold text-[var(--aurora-2)] transition hover:bg-[var(--aurora-2)]/20">
+                  <Sparkles className="h-3.5 w-3.5" /> Mood Mix
+                </button>
+              )}
               {view.type === "library" && (
                 <button data-testid="find-dupes" onClick={() => setShowDupes(true)}
                   className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2 text-xs font-semibold transition hover:border-[var(--aurora-2)]/40">
