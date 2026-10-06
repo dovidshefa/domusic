@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { UploadPanel } from "@/components/UploadPanel";
+import { DuplicatesDialog } from "@/components/DuplicatesDialog";
+import { findDuplicateGroups } from "@/lib/duplicates";
 import { useUploadManager } from "@/lib/upload-manager";
 import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
 import { toast } from "sonner";
@@ -114,6 +116,7 @@ function Index() {
   const playlistCoverRef = useRef<HTMLInputElement>(null);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
+  const [showDupes, setShowDupes] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkMenu, setBulkMenu] = useState(false);
   const [visibleCount, setVisibleCount] = useState(120);
@@ -1060,6 +1063,8 @@ function Index() {
     view.type === "artist" ? view.name :
     activePlaylist?.name ?? "Playlist";
 
+  const dupeCount = useMemo(() => findDuplicateGroups(tracks).length, [tracks]);
+
   return (
     <div className="relative flex h-screen w-full overflow-hidden" onClick={() => setAddToMenu(null)}>
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-40 transition-all duration-1000"
@@ -1319,6 +1324,7 @@ function Index() {
             </div>
           </div>
 
+          {showDupes && <DuplicatesDialog tracks={tracks} onClose={() => setShowDupes(false)} onDelete={deleteMany} />}
           <UploadPanel
             items={upload.items}
             onCancel={upload.cancel}
@@ -1333,6 +1339,12 @@ function Index() {
               <p className="mt-1 text-xs text-muted-foreground">{isPublicView ? "Shared by the DoMusic community" : `${filtered.length} tracks`}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {view.type === "library" && (
+                <button data-testid="find-dupes" onClick={() => setShowDupes(true)}
+                  className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2 text-xs font-semibold transition hover:border-[var(--aurora-2)]/40">
+                  <CheckCheck className="h-3.5 w-3.5" /> Find duplicates{dupeCount > 0 ? ` (${dupeCount})` : ""}
+                </button>
+              )}
               {view.type !== "artists" && !isPublicView && (
                 <button
                   onClick={() => { setSelectMode((s) => !s); setSelected([]); setBulkMenu(false); }}

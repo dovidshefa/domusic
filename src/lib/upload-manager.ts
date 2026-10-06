@@ -1,3 +1,4 @@
+import { normalizeTitle } from "./duplicates";
 import { useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,6 +17,7 @@ export type UploadItem = {
   error?: string;
   /** existing track with the same name, when status === "duplicate" */
   duplicateOf?: string;
+  duplicateName?: string;
 };
 
 export type UploadedTrack = {
@@ -198,7 +200,7 @@ export function useUploadManager(opts: {
         const id = crypto.randomUUID();
         filesRef.current.set(id, file);
         const base = file.name.replace(/\.[^.]+$/, "");
-        const dup = existing.find((t) => t.song.toLowerCase() === base.toLowerCase());
+        const dup = existing.find((t) => normalizeTitle(t.song) === normalizeTitle(base));
         const item: UploadItem = {
           id,
           name: file.name,
@@ -207,6 +209,7 @@ export function useUploadManager(opts: {
           progress: 0,
           status: dup ? "duplicate" : "queued",
           duplicateOf: dup?.id,
+          duplicateName: dup?.song,
         };
         fresh.push(item);
         if (!dup) toStart.push(id);
