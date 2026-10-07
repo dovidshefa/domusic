@@ -1056,7 +1056,74 @@ function Index() {
      stopStutter();
      const start = el.currentTime;
      stutterRef.current = window.setInterval(() => { el.currentTime = start; }, len * 1000 / djSpeed);
-   };
+    };
+
+    // DJ Soundboard: synthesized one-shot drops mixed over the song
+    const [padVol, setPadVol] = useState(0.7);
+    const [padFlash, setPadFlash] = useState<string | null>(null);
+    const fxCtx = () => {
+      if (!audioCtxRef.current) {
+        const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
+        audioCtxRef.current = new Ctx();
+      }
+      const c = audioCtxRef.current!;
+      if (c.state === "suspended") c.resume();
+      return c;
+    };
+    const playPad = (kind: string) => {
+      setPadFlash(kind); window.setTimeout(() => setPadFlash((p) => (p === kind ? null : p)), 250);
+      if (kind === "brake") {
+        const el = isVideo ? videoRef.current : audioRef.current;
+        if (!el || el.paused) return;
+        (el as any).preservesPitch = false; (el as any).webkitPreservesPitch = false;
+        const base = djSpeed; const t0 = performance.now(); const dur = 900;
+        const step = () => {
+          const k = Math.min(1, (performance.now() - t0) / dur);
+          el.playbackRate = Math.max(0.07, base * (1 - k) * (1 - k));
+          if (k < 1) requestAnimationFrame(step);
+          else { el.pause(); window.setTimeout(() => { el.playbackRate = base; (el as any).preservesPitch = base === 1; el.play().catch(() => {}); }, 450); }
+        };
+        requestAnimationFrame(step);
+        return;
+      }
+      const c = fxCtx(); const now = c.currentTime;
+      const out = c.createGain(); out.gain.value = padVol; out.connect(c.destination);
+      const env = (g: GainNode, peak: number, a: number, d: number) => {
+        g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(peak, now + a); g.gain.exponentialRampToValueAtTime(0.0001, now + a + d);
+      };
+      if (kind === "horn") {
+        [0, 0.28, 0.56, 0.84].forEach((off, i) => {
+          const long = i === 3;
+          [466, 470, 233].forEach((f) => {
+            const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = f;
+            const g = c.createGain(); const st = now + off; const len = long ? 0.9 : 0.22;
+            g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(0.18, st + 0.02); g.gain.setValueAtTime(0.18, st + len - 0.05); g.gain.exponentialRampToValueAtTime(0.0001, st + len);
+            const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1400; bp.Q.value = 0.7;
+            o.connect(bp).connect(g).connect(out); o.start(st); o.stop(st + len + 0.05);
+          });
+        });
+      } else if (kind === "sub") {
+        const o = c.createOscillator(); o.type = "sine";
+        o.frequency.setValueAtTime(120, now); o.frequency.exponentialRampToValueAtTime(35, now + 1.4);
+        const g = c.createGain(); env(g, 1, 0.01, 1.6);
+        o.connect(g).connect(out); o.start(now); o.stop(now + 1.7);
+      } else if (kind === "laser") {
+        const o = c.createOscillator(); o.type = "square";
+        o.frequency.setValueAtTime(300, now); o.frequency.exponentialRampToValueAtTime(3200, now + 1.2);
+        const lfo = c.createOscillator(); lfo.frequency.value = 9; const lg = c.createGain(); lg.gain.value = 120;
+        lfo.connect(lg).connect(o.frequency);
+        const g = c.createGain(); env(g, 0.15, 0.05, 1.25);
+        o.connect(g).connect(out); o.start(now); lfo.start(now); o.stop(now + 1.4); lfo.stop(now + 1.4);
+      } else if (kind === "scratch") {
+        const len = 0.6; const buf = c.createBuffer(1, c.sampleRate * len, c.sampleRate); const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        const src = c.createBufferSource(); src.buffer = buf;
+        const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 4;
+        [[0, 400], [0.12, 2200], [0.24, 500], [0.36, 2600], [0.5, 300]].forEach(([t, f]) => bp.frequency.linearRampToValueAtTime(f, now + t));
+        const g = c.createGain(); g.gain.setValueAtTime(0.6, now); g.gain.exponentialRampToValueAtTime(0.0001, now + len);
+        src.connect(bp).connect(g).connect(out); src.start(now);
+      }
+    };
 
   // 8D orbit / manual: crossfade dry/wet and position the HRTF panner
   useEffect(() => {
@@ -2042,6 +2109,22 @@ function Index() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span>Soundboard</span><span className="tabular-nums text-foreground">{Math.round(padVol * 100)}%</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {([["horn", "📢", "Horn"], ["brake", "🛑", "Brake"], ["sub", "💥", "808"], ["laser", "🚨", "Laser"], ["scratch", "💽", "Scratch"]] as const).map(([k, icon, label]) => (
+                <button key={k} data-testid={`dj-pad-${k}`} onPointerDown={() => playPad(k)}
+                  className={`flex aspect-square select-none flex-col items-center justify-center rounded-xl border text-[9px] font-semibold transition active:scale-95 ${padFlash === k ? "border-[var(--aurora-1)] text-[var(--aurora-1)] shadow-[0_0_16px_var(--aurora-1)]" : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground"}`}>
+                  <span className="text-lg leading-none">{icon}</span>{label}
+                </button>
+              ))}
+            </div>
+            <input data-testid="dj-pad-vol" type="range" min={0} max={1} step={0.01} value={padVol}
+              onChange={(e) => setPadVol(parseFloat(e.target.value))} className="mt-2 w-full accent-[var(--aurora-1)]" />
           </div>
         </div>
       )}
