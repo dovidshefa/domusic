@@ -72,6 +72,16 @@ const ROOMS = {
 } as const;
 type RoomName = keyof typeof ROOMS;
 
+const DJ_KEY = "dovid-dj-v1";
+const DJ_PRESETS = {
+  slowed: { label: "Slowed + Reverb", speed: 0.85, filter: -0.15, reverb: 0.45 },
+  nightcore: { label: "Nightcore", speed: 1.25, filter: 0.08, reverb: 0 },
+  lofi: { label: "Lo-Fi", speed: 0.95, filter: -0.55, reverb: 0.15 },
+  buildup: { label: "Club Build-Up", speed: 1, filter: 0.6, reverb: 0.2 },
+  clean: { label: "Reset to Clean", speed: 1, filter: 0, reverb: 0 },
+} as const;
+type DjPresetName = keyof typeof DJ_PRESETS;
+
 function buildImpulse(ctx: BaseAudioContext, room: RoomName): AudioBuffer {
   const { decay, tail } = ROOMS[room];
   const len = Math.max(1, Math.floor(ctx.sampleRate * Math.max(0.05, decay)));
@@ -159,6 +169,13 @@ function Index() {
   const [spatialDir, setSpatialDir] = useState<1 | -1>(1);
   const [spatialAngle, setSpatialAngle] = useState(0);
   const [show8d, setShow8d] = useState(false);
+  const [showDj, setShowDj] = useState(false);
+  const djRef = useRef<{ lp: BiquadFilterNode; hp: BiquadFilterNode; rev: GainNode } | null>(null);
+  const [djFilter, setDjFilter] = useState(0);
+  const [djSpeed, setDjSpeed] = useState(1);
+  const [djReverb, setDjReverb] = useState(0);
+  const [djPreset, setDjPreset] = useState<DjPresetName | "custom">("clean");
+  const djActive = djFilter !== 0 || djSpeed !== 1 || djReverb > 0;
   const [spatialMode, setSpatialMode] = useState<"orbit" | "manual">("orbit");
   const [manualPos, setManualPos] = useState<{ angle: number; radius: number }>({ angle: 0, radius: 1 });
   const [spatialDistance, setSpatialDistance] = useState(1.5);
@@ -958,31 +975,88 @@ function Index() {
         dry.gain.value = 1; wet.gain.value = 0;
         const convolver = c.createConvolver();
         const roomGain = c.createGain(); roomGain.gain.value = 0;
-        const last = filtersRef.current[filtersRef.current.length - 1];
-        last.connect(dry); dry.connect(c.destination);
-        last.connect(panner); panner.connect(wet); wet.connect(c.destination);
-        panner.connect(convolver); convolver.connect(roomGain); roomGain.connect(c.destination);
-        spatialRef.current = { panner, dry, wet, convolver, roomGain };
-      }
-      const ctx = audioCtxRef.current!;
-      if (ctx.state === "suspended") ctx.resume();
-      if (!sourcesRef.current.has(el)) {
-        const src = ctx.createMediaElementSource(el);
-        sourcesRef.current.set(el, src);
-        // chain: src -> f0 -> f1 ... -> output stage
-        let node: AudioNode = src;
-        filtersRef.current.forEach((f) => { node.connect(f); node = f; });
-      }
-    } catch (err) {
-      console.warn("EQ setup failed", err);
-    }
-  }, [eqGains]);
+         const last = filtersRef.current[filtersRef.current.length - 1];
+         // DJ stage: EQ -> lowpass -> highpass -> djOut (-> reverb send)
+         const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 22000; lp.Q.value = 0.9;
+         const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 10; hp.Q.value = 0.9;
+         const djOut = c.createGain();
+         const djConv = c.createConvolver(); djConv.buffer = buildImpulse(c, "hall");
+         const djRev = c.createGain(); djRev.gain.value = 0;
+         last.connect(lp); lp.connect(hp); hp.connect(djOut);
+         djOut.connect(djConv); djConv.connect(djRev); djRev.connect(c.destination);
+         djRef.current = { lp, hp, rev: djRev };
+         djOut.connect(dry); dry.connect(c.destination);
+         djOut.connect(panner); panner.connect(wet); wet.connect(c.destination);
+         panner.connect(convolver); convolver.connect(roomGain); roomGain.connect(c.destination);
+         spatialRef.current = { panner, dry, wet, convolver, roomGain };
+       }
+       const ctx = audioCtxRef.current!;
+       if (ctx.state === "suspended") ctx.resume();
+       if (!sourcesRef.current.has(el)) {
+         const src = ctx.createMediaElementSource(el);
+         sourcesRef.current.set(el, src);
+         // chain: src -> f0 -> f1 ... -> output stage
+         let node: AudioNode = src;
+         filtersRef.current.forEach((f) => { node.connect(f); node = f; });
+       }
+     } catch (err) {
+       console.warn("EQ setup failed", err);
+     }
+   }, [eqGains]);
+ 
+   useEffect(() => {
+     if (!eqEnabled && !spatialOn && !djActive) return;
+     ensureEqGraph(audioRef.current);
+     if (isVideo) ensureEqGraph(videoRef.current);
+   }, [eqEnabled, spatialOn, djActive, currentId, isVideo, ensureEqGraph]);
 
-  useEffect(() => {
-    if (!eqEnabled && !spatialOn) return;
-    ensureEqGraph(audioRef.current);
-    if (isVideo) ensureEqGraph(videoRef.current);
-  }, [eqEnabled, spatialOn, currentId, isVideo, ensureEqGraph]);
+   // DJ: apply filter sweep + reverb
+   useEffect(() => {
+     const d = djRef.current; const ctx = audioCtxRef.current;
+     if (!d || !ctx) return;
+     const t = ctx.currentTime;
+     const lpF = djFilter < 0 ? 22000 * Math.pow(200 / 22000, -djFilter) : 22000;
+     const hpF = djFilter > 0 ? 10 * Math.pow(4000 / 10, djFilter) : 10;
+     d.lp.frequency.setTargetAtTime(lpF, t, 0.05);
+     d.hp.frequency.setTargetAtTime(hpF, t, 0.05);
+     d.rev.gain.setTargetAtTime(djReverb * 0.8, t, 0.1);
+   }, [djFilter, djReverb, djActive, currentId]);
+
+   // DJ: speed (pitch moves with speed, like a turntable)
+   useEffect(() => {
+     [audioRef.current, videoRef.current].forEach((el) => {
+       if (!el) return;
+       (el as any).preservesPitch = djSpeed === 1;
+       (el as any).webkitPreservesPitch = djSpeed === 1;
+       el.playbackRate = djSpeed;
+     });
+   }, [djSpeed, currentId, isVideo, playing]);
+
+   useEffect(() => {
+     try { localStorage.setItem(DJ_KEY, JSON.stringify({ djFilter, djSpeed, djReverb, djPreset })); } catch {}
+   }, [djFilter, djSpeed, djReverb, djPreset]);
+   useEffect(() => {
+     try {
+       const s = JSON.parse(localStorage.getItem(DJ_KEY) || "null");
+       if (s) { setDjFilter(s.djFilter ?? 0); setDjSpeed(s.djSpeed ?? 1); setDjReverb(s.djReverb ?? 0); setDjPreset(s.djPreset ?? "clean"); }
+     } catch {}
+   }, []);
+
+   const applyDjPreset = (k: DjPresetName) => {
+     const p = DJ_PRESETS[k];
+     setDjPreset(k); setDjSpeed(p.speed); setDjFilter(p.filter); setDjReverb(p.reverb);
+     ensureEqGraph(audioRef.current); if (isVideo) ensureEqGraph(videoRef.current);
+   };
+
+   const stutterRef = useRef<number | null>(null);
+   const stopStutter = () => { if (stutterRef.current) { clearInterval(stutterRef.current); stutterRef.current = null; } };
+   const startStutter = (len: number) => {
+     const el = isVideo ? videoRef.current : audioRef.current;
+     if (!el) return;
+     stopStutter();
+     const start = el.currentTime;
+     stutterRef.current = window.setInterval(() => { el.currentTime = start; }, len * 1000 / djSpeed);
+   };
 
   // 8D orbit / manual: crossfade dry/wet and position the HRTF panner
   useEffect(() => {
@@ -1720,7 +1794,11 @@ function Index() {
           </div>
 
           <div className="hidden items-center justify-end gap-3 md:flex">
-            <button data-testid="btn-8d" onClick={() => { setShow8d((s) => !s); setShowEq(false); }} title="8D Spatial Audio"
+            <button data-testid="btn-dj" onClick={() => { setShowDj((s) => !s); setShow8d(false); setShowEq(false); }} title="DJ Deck"
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${djActive ? "border-[var(--aurora-1)] text-[var(--aurora-1)] shadow-[0_0_12px_var(--aurora-1)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              <Disc3 className={`h-3 w-3 ${djActive && playing ? "animate-spin" : ""}`} /> DJ
+            </button>
+            <button data-testid="btn-8d" onClick={() => { setShow8d((s) => !s); setShowEq(false); setShowDj(false); }} title="8D Spatial Audio"
               className={`relative rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${spatialOn ? "border-[var(--aurora-3)] text-[var(--aurora-3)] shadow-[0_0_12px_var(--aurora-3)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
               8D
               {spatialOn && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-ping rounded-full bg-[var(--aurora-3)]" />}
@@ -1861,7 +1939,10 @@ function Index() {
               <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
               </button>
-              <button data-testid="mobile-8d" onClick={() => { setShowMobileMenu(false); setShow8d(true); setShowEq(false); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${spatialOn ? "border-[var(--aurora-3)]/50 text-[var(--aurora-3)]" : ""}`}>
+              <button data-testid="mobile-dj" onClick={() => { setShowMobileMenu(false); setShowDj(true); setShow8d(false); setShowEq(false); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${djActive ? "border-[var(--aurora-1)]/50 text-[var(--aurora-1)]" : ""}`}>
+                <Disc3 className="h-5 w-5" /><span className="text-[10px] font-semibold">DJ</span>
+              </button>
+              <button data-testid="mobile-8d" onClick={() => { setShowMobileMenu(false); setShow8d(true); setShowEq(false); setShowDj(false); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${spatialOn ? "border-[var(--aurora-3)]/50 text-[var(--aurora-3)]" : ""}`}>
                 <span className="font-display text-base font-bold leading-5">8D</span><span className="text-[10px] font-semibold">{spatialOn ? "8D on" : "8D"}</span>
               </button>
               <button onClick={() => { setShowMobileMenu(false); toggleFullscreen(); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
@@ -1890,6 +1971,77 @@ function Index() {
                 className="flex-1 accent-[var(--aurora-2)]" />
             </div>
             <p className="mt-3 text-center text-[10px] text-muted-foreground">Swipe ← → on the cover to skip tracks · ↑↓ to skip 10s</p>
+          </div>
+        </div>
+      )}
+
+      {/* DJ Deck popover */}
+      {showDj && (
+        <div data-testid="panel-dj" className="absolute bottom-28 right-4 z-40 w-[320px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-28">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="font-display text-lg">DJ Deck</div>
+              <div className="text-[10px] text-muted-foreground">Remix any song live</div>
+            </div>
+            <button onClick={() => setShowDj(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+          </div>
+
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {(Object.keys(DJ_PRESETS) as DjPresetName[]).map((k) => (
+              <button key={k} data-testid={`dj-preset-${k}`} onClick={() => applyDjPreset(k)}
+                className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${djPreset === k ? "border-[var(--aurora-1)] text-[var(--aurora-1)] shadow-[0_0_12px_var(--aurora-1)]" : "border-border text-muted-foreground hover:text-foreground"} ${k === "clean" ? "col-span-2" : ""}`}>
+                {DJ_PRESETS[k].label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mb-4">
+            <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span>Filter sweep</span>
+              <span className="tabular-nums text-foreground">{djFilter === 0 ? "Clean" : djFilter < 0 ? `Low-pass ${Math.round(-djFilter * 100)}%` : `High-pass ${Math.round(djFilter * 100)}%`}</span>
+            </div>
+            <input data-testid="dj-filter" type="range" min={-1} max={1} step={0.01} value={djFilter}
+              onChange={(e) => { const v = parseFloat(e.target.value); setDjFilter(Math.abs(v) < 0.04 ? 0 : v); setDjPreset("custom"); }}
+              onDoubleClick={() => setDjFilter(0)}
+              className="w-full accent-[var(--aurora-1)]" />
+            <div className="flex justify-between text-[9px] text-muted-foreground"><span>Muffled bass</span><span>Center</span><span>Sharp highs</span></div>
+          </div>
+
+          <div className="mb-4">
+            <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span>Speed</span><span className="tabular-nums text-foreground">{djSpeed.toFixed(2)}x</span>
+            </div>
+            <input data-testid="dj-speed" type="range" min={0.5} max={1.5} step={0.01} value={djSpeed}
+              onChange={(e) => { setDjSpeed(parseFloat(e.target.value)); setDjPreset("custom"); }}
+              className="w-full accent-[var(--aurora-2)]" />
+            <div className="mt-1 flex gap-1.5">
+              {[0.85, 1, 1.25].map((s) => (
+                <button key={s} onClick={() => { setDjSpeed(s); setDjPreset("custom"); }}
+                  className={`flex-1 rounded-lg border py-1 text-[10px] font-semibold ${djSpeed === s ? "border-[var(--aurora-2)] text-[var(--aurora-2)]" : "border-border text-muted-foreground"}`}>{s}x</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span>Reverb</span><span className="tabular-nums text-foreground">{Math.round(djReverb * 100)}%</span>
+            </div>
+            <input data-testid="dj-reverb" type="range" min={0} max={1} step={0.01} value={djReverb}
+              onChange={(e) => { setDjReverb(parseFloat(e.target.value)); setDjPreset("custom"); }}
+              className="w-full accent-[var(--aurora-3)]" />
+          </div>
+
+          <div>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Beat repeat (hold)</div>
+            <div className="flex gap-1.5">
+              {[0.25, 0.5, 1].map((len) => (
+                <button key={len} data-testid={`dj-stutter-${len}`}
+                  onPointerDown={() => startStutter(len)} onPointerUp={stopStutter} onPointerLeave={stopStutter}
+                  className="flex-1 select-none rounded-lg border border-border py-2 text-[10px] font-semibold text-muted-foreground active:border-[var(--aurora-1)] active:text-[var(--aurora-1)]">
+                  {len === 1 ? "1 sec" : `${len * 1000} ms`}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
