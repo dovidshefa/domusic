@@ -997,6 +997,13 @@ function Index() {
          djOut.connect(panner); panner.connect(wet); wet.connect(c.destination);
          panner.connect(convolver); convolver.connect(roomGain); roomGain.connect(c.destination);
          spatialRef.current = { panner, dry, wet, convolver, roomGain };
+         // Pad bus: glue compressor + limiter so stacked pads never clip or duck the song out
+         const padComp = c.createDynamicsCompressor();
+         padComp.threshold.value = -14; padComp.knee.value = 8; padComp.ratio.value = 6; padComp.attack.value = 0.003; padComp.release.value = 0.18;
+         const padLim = c.createDynamicsCompressor();
+         padLim.threshold.value = -2; padLim.knee.value = 0; padLim.ratio.value = 20; padLim.attack.value = 0.001; padLim.release.value = 0.08;
+         padComp.connect(padLim); padLim.connect(c.destination);
+         padBusRef.current = padComp;
        }
        const ctx = audioCtxRef.current!;
        if (ctx.state === "suspended") ctx.resume();
