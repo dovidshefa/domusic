@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
-  Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
+  Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X, LayoutGrid,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
   CheckSquare, Square, CheckCheck, Video, Globe2, Lock, Sparkles,
@@ -1186,6 +1186,19 @@ function Index() {
       }
     };
 
+  const playPadRef = useRef(playPad); playPadRef.current = playPad;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!showSampler || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const pad = SAMPLER_PADS.find((p) => p[1] === e.key.toLowerCase());
+      if (pad) { e.preventDefault(); e.stopPropagation(); playPadRef.current(pad[0]); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [showSampler]);
+
   // 8D orbit / manual: crossfade dry/wet and position the HRTF panner
   useEffect(() => {
     try { localStorage.setItem("dovid-8d-v1", JSON.stringify({ on: spatialOn, period: spatialPeriod, dir: spatialDir, mode: spatialMode, distance: spatialDistance, room: spatialRoom, roomMix: spatialRoomMix, manual: manualPos })); } catch {}
@@ -1922,7 +1935,11 @@ function Index() {
           </div>
 
           <div className="hidden items-center justify-end gap-3 md:flex">
-            <button data-testid="btn-dj" onClick={() => { setShowDj((s) => !s); setShow8d(false); setShowEq(false); }} title="DJ Deck"
+            <button data-testid="btn-sampler" onClick={() => { setShowSampler((s) => !s); setShowDj(false); setShow8d(false); setShowEq(false); }} title="Sampler pads"
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${showSampler ? "border-[var(--aurora-2)] text-[var(--aurora-2)] shadow-[0_0_12px_var(--aurora-2)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              <LayoutGrid className="h-3 w-3" /> PADS
+            </button>
+            <button data-testid="btn-dj" onClick={() => { setShowDj((s) => !s); setShow8d(false); setShowEq(false); setShowSampler(false); }} title="DJ Deck"
               className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${djActive ? "border-[var(--aurora-1)] text-[var(--aurora-1)] shadow-[0_0_12px_var(--aurora-1)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
               <Disc3 className={`h-3 w-3 ${djActive && playing ? "animate-spin" : ""}`} /> DJ
             </button>
@@ -2067,6 +2084,9 @@ function Index() {
               <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
               </button>
+              <button data-testid="mobile-sampler" onClick={() => { setShowMobileMenu(false); setShowSampler(true); setShowDj(false); setShow8d(false); setShowEq(false); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <LayoutGrid className="h-5 w-5" /><span className="text-[10px] font-semibold">Pads</span>
+              </button>
               <button data-testid="mobile-dj" onClick={() => { setShowMobileMenu(false); setShowDj(true); setShow8d(false); setShowEq(false); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${djActive ? "border-[var(--aurora-1)]/50 text-[var(--aurora-1)]" : ""}`}>
                 <Disc3 className="h-5 w-5" /><span className="text-[10px] font-semibold">DJ</span>
               </button>
@@ -2186,6 +2206,38 @@ function Index() {
             </div>
             <input data-testid="dj-pad-vol" type="range" min={0} max={1} step={0.01} value={padVol}
               onChange={(e) => setPadVol(parseFloat(e.target.value))} className="mt-2 w-full accent-[var(--aurora-1)]" />
+          </div>
+        </div>
+      )}
+
+      {/* Sampler launchpad */}
+      {showSampler && (
+        <div data-testid="panel-sampler" className="absolute bottom-28 right-4 z-40 w-[360px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-36">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-display text-lg">Sampler</div>
+              <div className="text-[10px] text-muted-foreground">Tap pads or use keys 1–4 · Q–R · A–F</div>
+            </div>
+            <button onClick={() => setShowSampler(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {SAMPLER_PADS.map(([k, key, icon, label]) => (
+              <button key={k} data-testid={`sampler-pad-${k}`} onPointerDown={() => playPad(k)}
+                className={`relative flex aspect-square select-none flex-col items-center justify-center rounded-xl border text-[10px] font-semibold transition active:scale-95 ${padFlash === k ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/20 text-foreground shadow-[0_0_20px_var(--aurora-2)]" : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground"}`}>
+                <span className="absolute left-1.5 top-1 text-[8px] uppercase opacity-60">{key}</span>
+                <span className="text-xl leading-none">{icon}</span>{label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 space-y-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <label className="block">
+              <div className="mb-1 flex justify-between"><span>FX volume</span><span className="tabular-nums text-foreground">{Math.round(padVol * 100)}%</span></div>
+              <input data-testid="sampler-vol" type="range" min={0} max={1} step={0.01} value={padVol} onChange={(e) => setPadVol(parseFloat(e.target.value))} className="w-full accent-[var(--aurora-2)]" />
+            </label>
+            <label className="block">
+              <div className="mb-1 flex justify-between"><span>Pitch</span><span className="tabular-nums text-foreground">{padPitch > 0 ? "+" : ""}{padPitch} st</span></div>
+              <input data-testid="sampler-pitch" type="range" min={-12} max={12} step={1} value={padPitch} onChange={(e) => setPadPitch(parseInt(e.target.value))} onDoubleClick={() => setPadPitch(0)} className="w-full accent-[var(--aurora-2)]" />
+            </label>
           </div>
         </div>
       )}
