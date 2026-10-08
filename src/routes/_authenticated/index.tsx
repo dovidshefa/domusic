@@ -176,7 +176,8 @@ function Index() {
   const [spatialAngle, setSpatialAngle] = useState(0);
   const [show8d, setShow8d] = useState(false);
   const [showDj, setShowDj] = useState(false);
-  const djRef = useRef<{ lp: BiquadFilterNode; hp: BiquadFilterNode; rev: GainNode } | null>(null);
+  const djRef = useRef<{ lp: BiquadFilterNode; hp: BiquadFilterNode; rev: GainNode; gate: GainNode } | null>(null);
+  const padBusRef = useRef<AudioNode | null>(null);
   const [djFilter, setDjFilter] = useState(0);
   const [djSpeed, setDjSpeed] = useState(1);
   const [djReverb, setDjReverb] = useState(0);
@@ -985,12 +986,13 @@ function Index() {
          // DJ stage: EQ -> lowpass -> highpass -> djOut (-> reverb send)
          const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 22000; lp.Q.value = 0.9;
          const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 10; hp.Q.value = 0.9;
-         const djOut = c.createGain();
-         const djConv = c.createConvolver(); djConv.buffer = buildImpulse(c, "hall");
-         const djRev = c.createGain(); djRev.gain.value = 0;
-         last.connect(lp); lp.connect(hp); hp.connect(djOut);
-         djOut.connect(djConv); djConv.connect(djRev); djRev.connect(c.destination);
-         djRef.current = { lp, hp, rev: djRev };
+          const djOut = c.createGain();
+          const gate = c.createGain(); gate.gain.value = 1;
+          const djConv = c.createConvolver(); djConv.buffer = buildImpulse(c, "hall");
+          const djRev = c.createGain(); djRev.gain.value = 0;
+          last.connect(lp); lp.connect(hp); hp.connect(gate); gate.connect(djOut);
+          djOut.connect(djConv); djConv.connect(djRev); djRev.connect(c.destination);
+          djRef.current = { lp, hp, rev: djRev, gate };
          djOut.connect(dry); dry.connect(c.destination);
          djOut.connect(panner); panner.connect(wet); wet.connect(c.destination);
          panner.connect(convolver); convolver.connect(roomGain); roomGain.connect(c.destination);
