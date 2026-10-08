@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
-  Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X,
+  Shuffle, Repeat, Volume2, VolumeX, Music2, Clock, Disc3, X, LayoutGrid,
   Trash2, Plus, ListPlus, LogOut, Maximize2, Minimize2, Download, Sliders,
   Rewind, FastForward, Pencil, User as UserIcon, MoreVertical,
   CheckSquare, Square, CheckCheck, Video, Globe2, Lock, Sparkles,
@@ -73,6 +73,12 @@ const ROOMS = {
 type RoomName = keyof typeof ROOMS;
 
 const DJ_KEY = "dovid-dj-v1";
+const SAMPLER_PADS = [
+  ["horn", "1", "📢", "Air Horn"], ["siren", "2", "🚨", "Siren"], ["rewind", "3", "⏪", "Rewind"], ["laser", "4", "⚡", "Laser"],
+  ["sub", "q", "💥", "808 Drop"], ["boom", "w", "🧨", "Impact"], ["riser", "e", "🚀", "Riser"], ["downer", "r", "🌊", "Dive"],
+  ["brake", "a", "🛑", "Brake"], ["scratch", "s", "💽", "Scratch"], ["cut", "d", "✂️", "Drop Cut"], ["glitch", "f", "🔁", "Stutter"],
+  ["cheer", "z", "🙌", "Crowd"], ["rim", "x", "🥁", "Rimshot"],
+] as const;
 const DJ_PRESETS = {
   slowed: { label: "Slowed + Reverb", speed: 0.85, filter: -0.15, reverb: 0.45 },
   nightcore: { label: "Nightcore", speed: 1.25, filter: 0.08, reverb: 0 },
@@ -1059,8 +1065,11 @@ function Index() {
     };
 
     // DJ Soundboard: synthesized one-shot drops mixed over the song
-    const [padVol, setPadVol] = useState(0.7);
-    const [padFlash, setPadFlash] = useState<string | null>(null);
+     const [padVol, setPadVol] = useState(0.7);
+     const [padPitch, setPadPitch] = useState(0);
+     const [showSampler, setShowSampler] = useState(false);
+     const chokeRef = useRef<Record<string, GainNode>>({});
+     const [padFlash, setPadFlash] = useState<string | null>(null);
     const fxCtx = () => {
       if (!audioCtxRef.current) {
         const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
@@ -1086,8 +1095,66 @@ function Index() {
         requestAnimationFrame(step);
         return;
       }
+      const elNow = isVideo ? videoRef.current : audioRef.current;
+      if (kind === "cut") {
+        if (!elNow) return; const v = elNow.muted; elNow.muted = true;
+        window.setTimeout(() => { elNow.muted = v; }, 500); return;
+      }
+      if (kind === "glitch") { startStutter(0.125); window.setTimeout(stopStutter, 700); return; }
+      if (kind === "rewind") {
+        if (elNow && !elNow.paused) window.setTimeout(() => { elNow.currentTime = Math.max(0, elNow.currentTime - 4); }, 550);
+      }
       const c = fxCtx(); const now = c.currentTime;
+      const pm = Math.pow(2, padPitch / 12);
+      const group = ["riser", "downer", "scratch", "rewind", "siren"].includes(kind) ? "sweep" : kind;
+      const prev = chokeRef.current[group];
+      if (prev) { try { prev.gain.cancelScheduledValues(now); prev.gain.setTargetAtTime(0, now, 0.02); } catch {} }
       const out = c.createGain(); out.gain.value = padVol; out.connect(c.destination);
+      chokeRef.current[group] = out;
+      const noise = (len: number) => { const b = c.createBuffer(1, c.sampleRate * len, c.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = c.createBufferSource(); s.buffer = b; return s; };
+      const osc = (type: OscillatorType, f0: number, f1: number, len: number, peak: number) => {
+        const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0 * pm, now); o.frequency.exponentialRampToValueAtTime(f1 * pm, now + len);
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(peak, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + len);
+        o.connect(g).connect(out); o.start(now); o.stop(now + len + 0.05);
+      };
+      if (kind === "siren") {
+        const o = c.createOscillator(); o.type = "sawtooth";
+        for (let i = 0; i < 6; i++) { o.frequency.setValueAtTime(600 * pm, now + i * 0.3); o.frequency.linearRampToValueAtTime(1300 * pm, now + i * 0.3 + 0.15); o.frequency.linearRampToValueAtTime(600 * pm, now + i * 0.3 + 0.3); }
+        const g = c.createGain(); g.gain.setValueAtTime(0.12, now); g.gain.setValueAtTime(0.12, now + 1.7); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+        o.connect(g).connect(out); o.start(now); o.stop(now + 1.85); return;
+      }
+      if (kind === "boom") {
+        osc("sine", 90, 28, 2.2, 1);
+        const n = noise(1.5); const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(3000, now); lp.frequency.exponentialRampToValueAtTime(80, now + 1.4);
+        const g = c.createGain(); g.gain.setValueAtTime(0.9, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.5);
+        n.connect(lp).connect(g).connect(out); n.start(now); return;
+      }
+      if (kind === "riser" || kind === "downer") {
+        const up = kind === "riser"; const len = up ? 3 : 2;
+        const n = noise(len); const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 3;
+        bp.frequency.setValueAtTime((up ? 300 : 6000) * pm, now); bp.frequency.exponentialRampToValueAtTime((up ? 8000 : 150) * pm, now + len);
+        const g = c.createGain(); g.gain.setValueAtTime(up ? 0.02 : 0.6, now); g.gain.exponentialRampToValueAtTime(up ? 0.6 : 0.001, now + len);
+        n.connect(bp).connect(g).connect(out); n.start(now);
+        osc("sawtooth", up ? 110 : 880, up ? 880 : 55, len, 0.06); return;
+      }
+      if (kind === "rewind") {
+        const n = noise(0.6); const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 6;
+        bp.frequency.setValueAtTime(3000 * pm, now); bp.frequency.exponentialRampToValueAtTime(200, now + 0.55);
+        const g = c.createGain(); g.gain.setValueAtTime(0.7, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+        n.connect(bp).connect(g).connect(out); n.start(now); return;
+      }
+      if (kind === "cheer") {
+        const n = noise(3); const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1500 * pm; bp.Q.value = 0.6;
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.35, now + 0.4); g.gain.setValueAtTime(0.35, now + 2); g.gain.exponentialRampToValueAtTime(0.0001, now + 3);
+        const lfo = c.createOscillator(); lfo.frequency.value = 7; const lg = c.createGain(); lg.gain.value = 0.12; lfo.connect(lg).connect(g.gain);
+        n.connect(bp).connect(g).connect(out); n.start(now); lfo.start(now); lfo.stop(now + 3); return;
+      }
+      if (kind === "rim") {
+        osc("triangle", 1700, 800, 0.08, 0.6);
+        const n = noise(0.06); const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2000;
+        const g = c.createGain(); g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+        n.connect(hp).connect(g).connect(out); n.start(now); return;
+      }
       const env = (g: GainNode, peak: number, a: number, d: number) => {
         g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(peak, now + a); g.gain.exponentialRampToValueAtTime(0.0001, now + a + d);
       };
@@ -1124,6 +1191,19 @@ function Index() {
         src.connect(bp).connect(g).connect(out); src.start(now);
       }
     };
+
+  const playPadRef = useRef(playPad); playPadRef.current = playPad;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!showSampler || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const pad = SAMPLER_PADS.find((p) => p[1] === e.key.toLowerCase());
+      if (pad) { e.preventDefault(); e.stopPropagation(); playPadRef.current(pad[0]); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [showSampler]);
 
   // 8D orbit / manual: crossfade dry/wet and position the HRTF panner
   useEffect(() => {
@@ -1861,7 +1941,11 @@ function Index() {
           </div>
 
           <div className="hidden items-center justify-end gap-3 md:flex">
-            <button data-testid="btn-dj" onClick={() => { setShowDj((s) => !s); setShow8d(false); setShowEq(false); }} title="DJ Deck"
+            <button data-testid="btn-sampler" onClick={() => { setShowSampler((s) => !s); setShowDj(false); setShow8d(false); setShowEq(false); }} title="Sampler pads"
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${showSampler ? "border-[var(--aurora-2)] text-[var(--aurora-2)] shadow-[0_0_12px_var(--aurora-2)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              <LayoutGrid className="h-3 w-3" /> PADS
+            </button>
+            <button data-testid="btn-dj" onClick={() => { setShowDj((s) => !s); setShow8d(false); setShowEq(false); setShowSampler(false); }} title="DJ Deck"
               className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider transition ${djActive ? "border-[var(--aurora-1)] text-[var(--aurora-1)] shadow-[0_0_12px_var(--aurora-1)]" : "border-border text-muted-foreground hover:text-foreground"}`}>
               <Disc3 className={`h-3 w-3 ${djActive && playing ? "animate-spin" : ""}`} /> DJ
             </button>
@@ -2006,6 +2090,9 @@ function Index() {
               <button onClick={() => { setShowMobileMenu(false); setShowEq(true); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
                 <Sliders className="h-5 w-5" /><span className="text-[10px] font-semibold">EQ</span>
               </button>
+              <button data-testid="mobile-sampler" onClick={() => { setShowMobileMenu(false); setShowSampler(true); setShowDj(false); setShow8d(false); setShowEq(false); }} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <LayoutGrid className="h-5 w-5" /><span className="text-[10px] font-semibold">Pads</span>
+              </button>
               <button data-testid="mobile-dj" onClick={() => { setShowMobileMenu(false); setShowDj(true); setShow8d(false); setShowEq(false); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${djActive ? "border-[var(--aurora-1)]/50 text-[var(--aurora-1)]" : ""}`}>
                 <Disc3 className="h-5 w-5" /><span className="text-[10px] font-semibold">DJ</span>
               </button>
@@ -2125,6 +2212,38 @@ function Index() {
             </div>
             <input data-testid="dj-pad-vol" type="range" min={0} max={1} step={0.01} value={padVol}
               onChange={(e) => setPadVol(parseFloat(e.target.value))} className="mt-2 w-full accent-[var(--aurora-1)]" />
+          </div>
+        </div>
+      )}
+
+      {/* Sampler launchpad */}
+      {showSampler && (
+        <div data-testid="panel-sampler" className="absolute bottom-28 right-4 z-40 w-[360px] rounded-2xl border border-border bg-panel/95 p-5 shadow-2xl backdrop-blur-xl md:bottom-32 md:right-36">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-display text-lg">Sampler</div>
+              <div className="text-[10px] text-muted-foreground">Tap pads or use keys 1–4 · Q–R · A–F</div>
+            </div>
+            <button onClick={() => setShowSampler(false)} className="rounded-full p-1 hover:bg-secondary"><X className="h-3.5 w-3.5" /></button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {SAMPLER_PADS.map(([k, key, icon, label]) => (
+              <button key={k} data-testid={`sampler-pad-${k}`} onPointerDown={() => playPad(k)}
+                className={`relative flex aspect-square select-none flex-col items-center justify-center rounded-xl border text-[10px] font-semibold transition active:scale-95 ${padFlash === k ? "border-[var(--aurora-2)] bg-[var(--aurora-2)]/20 text-foreground shadow-[0_0_20px_var(--aurora-2)]" : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground"}`}>
+                <span className="absolute left-1.5 top-1 text-[8px] uppercase opacity-60">{key}</span>
+                <span className="text-xl leading-none">{icon}</span>{label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 space-y-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <label className="block">
+              <div className="mb-1 flex justify-between"><span>FX volume</span><span className="tabular-nums text-foreground">{Math.round(padVol * 100)}%</span></div>
+              <input data-testid="sampler-vol" type="range" min={0} max={1} step={0.01} value={padVol} onChange={(e) => setPadVol(parseFloat(e.target.value))} className="w-full accent-[var(--aurora-2)]" />
+            </label>
+            <label className="block">
+              <div className="mb-1 flex justify-between"><span>Pitch</span><span className="tabular-nums text-foreground">{padPitch > 0 ? "+" : ""}{padPitch} st</span></div>
+              <input data-testid="sampler-pitch" type="range" min={-12} max={12} step={1} value={padPitch} onChange={(e) => setPadPitch(parseInt(e.target.value))} onDoubleClick={() => setPadPitch(0)} className="w-full accent-[var(--aurora-2)]" />
+            </label>
           </div>
         </div>
       )}
