@@ -73,6 +73,12 @@ const ROOMS = {
 type RoomName = keyof typeof ROOMS;
 
 const DJ_KEY = "dovid-dj-v1";
+const SAMPLER_PADS = [
+  ["horn", "1", "📢", "Air Horn"], ["siren", "2", "🚨", "Siren"], ["rewind", "3", "⏪", "Rewind"], ["laser", "4", "⚡", "Laser"],
+  ["sub", "q", "💥", "808 Drop"], ["boom", "w", "🧨", "Impact"], ["riser", "e", "🚀", "Riser"], ["downer", "r", "🌊", "Dive"],
+  ["brake", "a", "🛑", "Brake"], ["scratch", "s", "💽", "Scratch"], ["cut", "d", "✂️", "Drop Cut"], ["glitch", "f", "🔁", "Stutter"],
+  ["cheer", "z", "🙌", "Crowd"], ["rim", "x", "🥁", "Rimshot"],
+] as const;
 const DJ_PRESETS = {
   slowed: { label: "Slowed + Reverb", speed: 0.85, filter: -0.15, reverb: 0.45 },
   nightcore: { label: "Nightcore", speed: 1.25, filter: 0.08, reverb: 0 },
