@@ -1059,8 +1059,11 @@ function Index() {
     };
 
     // DJ Soundboard: synthesized one-shot drops mixed over the song
-    const [padVol, setPadVol] = useState(0.7);
-    const [padFlash, setPadFlash] = useState<string | null>(null);
+     const [padVol, setPadVol] = useState(0.7);
+     const [padPitch, setPadPitch] = useState(0);
+     const [showSampler, setShowSampler] = useState(false);
+     const chokeRef = useRef<Record<string, GainNode>>({});
+     const [padFlash, setPadFlash] = useState<string | null>(null);
     const fxCtx = () => {
       if (!audioCtxRef.current) {
         const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
@@ -1086,8 +1089,66 @@ function Index() {
         requestAnimationFrame(step);
         return;
       }
+      const elNow = isVideo ? videoRef.current : audioRef.current;
+      if (kind === "cut") {
+        if (!elNow) return; const v = elNow.muted; elNow.muted = true;
+        window.setTimeout(() => { elNow.muted = v; }, 500); return;
+      }
+      if (kind === "glitch") { startStutter(0.125); window.setTimeout(stopStutter, 700); return; }
+      if (kind === "rewind") {
+        if (elNow && !elNow.paused) window.setTimeout(() => { elNow.currentTime = Math.max(0, elNow.currentTime - 4); }, 550);
+      }
       const c = fxCtx(); const now = c.currentTime;
+      const pm = Math.pow(2, padPitch / 12);
+      const group = ["riser", "downer", "scratch", "rewind", "siren"].includes(kind) ? "sweep" : kind;
+      const prev = chokeRef.current[group];
+      if (prev) { try { prev.gain.cancelScheduledValues(now); prev.gain.setTargetAtTime(0, now, 0.02); } catch {} }
       const out = c.createGain(); out.gain.value = padVol; out.connect(c.destination);
+      chokeRef.current[group] = out;
+      const noise = (len: number) => { const b = c.createBuffer(1, c.sampleRate * len, c.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = c.createBufferSource(); s.buffer = b; return s; };
+      const osc = (type: OscillatorType, f0: number, f1: number, len: number, peak: number) => {
+        const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0 * pm, now); o.frequency.exponentialRampToValueAtTime(f1 * pm, now + len);
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(peak, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + len);
+        o.connect(g).connect(out); o.start(now); o.stop(now + len + 0.05);
+      };
+      if (kind === "siren") {
+        const o = c.createOscillator(); o.type = "sawtooth";
+        for (let i = 0; i < 6; i++) { o.frequency.setValueAtTime(600 * pm, now + i * 0.3); o.frequency.linearRampToValueAtTime(1300 * pm, now + i * 0.3 + 0.15); o.frequency.linearRampToValueAtTime(600 * pm, now + i * 0.3 + 0.3); }
+        const g = c.createGain(); g.gain.setValueAtTime(0.12, now); g.gain.setValueAtTime(0.12, now + 1.7); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+        o.connect(g).connect(out); o.start(now); o.stop(now + 1.85); return;
+      }
+      if (kind === "boom") {
+        osc("sine", 90, 28, 2.2, 1);
+        const n = noise(1.5); const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(3000, now); lp.frequency.exponentialRampToValueAtTime(80, now + 1.4);
+        const g = c.createGain(); g.gain.setValueAtTime(0.9, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.5);
+        n.connect(lp).connect(g).connect(out); n.start(now); return;
+      }
+      if (kind === "riser" || kind === "downer") {
+        const up = kind === "riser"; const len = up ? 3 : 2;
+        const n = noise(len); const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 3;
+        bp.frequency.setValueAtTime((up ? 300 : 6000) * pm, now); bp.frequency.exponentialRampToValueAtTime((up ? 8000 : 150) * pm, now + len);
+        const g = c.createGain(); g.gain.setValueAtTime(up ? 0.02 : 0.6, now); g.gain.exponentialRampToValueAtTime(up ? 0.6 : 0.001, now + len);
+        n.connect(bp).connect(g).connect(out); n.start(now);
+        osc("sawtooth", up ? 110 : 880, up ? 880 : 55, len, 0.06); return;
+      }
+      if (kind === "rewind") {
+        const n = noise(0.6); const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 6;
+        bp.frequency.setValueAtTime(3000 * pm, now); bp.frequency.exponentialRampToValueAtTime(200, now + 0.55);
+        const g = c.createGain(); g.gain.setValueAtTime(0.7, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+        n.connect(bp).connect(g).connect(out); n.start(now); return;
+      }
+      if (kind === "cheer") {
+        const n = noise(3); const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1500 * pm; bp.Q.value = 0.6;
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.35, now + 0.4); g.gain.setValueAtTime(0.35, now + 2); g.gain.exponentialRampToValueAtTime(0.0001, now + 3);
+        const lfo = c.createOscillator(); lfo.frequency.value = 7; const lg = c.createGain(); lg.gain.value = 0.12; lfo.connect(lg).connect(g.gain);
+        n.connect(bp).connect(g).connect(out); n.start(now); lfo.start(now); lfo.stop(now + 3); return;
+      }
+      if (kind === "rim") {
+        osc("triangle", 1700, 800, 0.08, 0.6);
+        const n = noise(0.06); const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2000;
+        const g = c.createGain(); g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+        n.connect(hp).connect(g).connect(out); n.start(now); return;
+      }
       const env = (g: GainNode, peak: number, a: number, d: number) => {
         g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(peak, now + a); g.gain.exponentialRampToValueAtTime(0.0001, now + a + d);
       };
