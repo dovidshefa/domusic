@@ -402,13 +402,24 @@ function Index() {
     supabase.from("tracks").update({ plays: (tracks.find(t => t.id === id)?.plays ?? 0) + 1 }).eq("id", id).then(() => {});
   }, [tracks]);
 
-  // Playback queue — user-reorderable order over the library
+  // Playback context — when a song is started from a playlist, only that playlist plays
+  const [contextIds, setContextIds] = useState<string[] | null>(null);
+  const playFromView = (id: string) => {
+    const next = view.type === "playlist" ? filtered.map((t) => t.id) : null;
+    const same = JSON.stringify(next) === JSON.stringify(contextIds);
+    if (!same) { setContextIds(next); setQueueIds([]); }
+    playTrack(id);
+  };
+
+  // Playback queue — user-reorderable order over the library (or active playlist)
   const queue = useMemo(() => {
     const byId = new Map(tracks.map((t) => [t.id, t] as const));
-    const ordered = queueIds.map((id) => byId.get(id)).filter(Boolean) as Track[];
+    const base = contextIds ? (contextIds.map((id) => byId.get(id)).filter(Boolean) as Track[]) : tracks;
+    const baseIds = new Set(base.map((t) => t.id));
+    const ordered = queueIds.map((id) => byId.get(id)).filter((t): t is Track => !!t && baseIds.has(t.id));
     const seen = new Set(ordered.map((t) => t.id));
-    return [...ordered, ...tracks.filter((t) => !seen.has(t.id))];
-  }, [tracks, queueIds]);
+    return [...ordered, ...base.filter((t) => !seen.has(t.id))];
+  }, [tracks, queueIds, contextIds]);
 
   const reorderQueue = (fromId: string, toId: string) => {
     if (fromId === toId) return;
@@ -1805,7 +1816,7 @@ function Index() {
               {filtered.map((t) => {
                 const active = t.id === currentId;
                 return (
-                  <article key={t.id} onClick={() => (selectMode && view.type !== "artists" ? toggleSelect(t.id) : playTrack(t.id))}
+                  <article key={t.id} onClick={() => (selectMode && view.type !== "artists" ? toggleSelect(t.id) : playFromView(t.id))}
                     data-track-id={t.id}
                     draggable={view.type === "playlist"}
                     onDragStart={view.type === "playlist" ? () => { dragIdRef.current = t.id; } : undefined}
