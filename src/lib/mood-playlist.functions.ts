@@ -2,14 +2,35 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
+export const AI_MIX_MONTHLY_LIMIT = 3;
+
 export type MoodPlaylistResult =
-  | { ok: true; name: string; description: string; trackIds: string[] }
-  | { ok: false; error: string };
+  | { ok: true; name: string; description: string; trackIds: string[]; remaining: number }
+  | { ok: false; error: string; quota?: boolean; remaining?: number };
+
+async function usedThisMonth(supabase: any, userId: string) {
+  const start = new Date();
+  start.setUTCDate(1); start.setUTCHours(0, 0, 0, 0);
+  const { count } = await supabase
+    .from("ai_mix_usage").select("id", { count: "exact", head: true })
+    .eq("user_id", userId).gte("created_at", start.toISOString());
+  return count ?? 0;
+}
+
+export const getAiMixQuota = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const used = await usedThisMonth(context.supabase, context.userId);
+    return { used, limit: AI_MIX_MONTHLY_LIMIT, remaining: Math.max(0, AI_MIX_MONTHLY_LIMIT - used) };
+  });
 
 export const generateMoodPlaylist = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ prompt: z.string().trim().min(2).max(300), count: z.number().int().min(3).max(50) }).parse(d))
   .handler(async ({ data, context }): Promise<MoodPlaylistResult> => {
+    const used = await usedThisMonth(context.supabase, context.userId);
+    if (used >= AI_MIX_MONTHLY_LIMIT)
+      return { ok: false, quota: true, remaining: 0, error: `You've used all ${AI_MIX_MONTHLY_LIMIT} AI mixes this month. Free mode is unlimited!` };
     const { data: rows, error } = await context.supabase
       .from("tracks")
       .select("id, song, artist, album, genre, kind, liked, plays")
@@ -60,12 +81,14 @@ export const generateMoodPlaylist = createServerFn({ method: "POST" })
         if (trackIds.length >= want) break;
       }
       if (trackIds.length === 0) return { ok: false, error: "No songs in your library fit that mood. Try describing it differently." };
-      return { ok: true, name: out.name.slice(0, 60) || data.prompt.slice(0, 40), description: out.description.slice(0, 200), trackIds };
+      await context.supabase.from("ai_mix_usage").insert({ user_id: context.userId });
+      const remaining = Math.max(0, AI_MIX_MONTHLY_LIMIT - used - 1);
+      return { ok: true, name: out.name.slice(0, 60) || data.prompt.slice(0, 40), description: out.description.slice(0, 200), trackIds, remaining };
     } catch (e) {
-      if (NoObjectGeneratedError.isInstance(e)) return { ok: false, error: "The AI returned an unexpected answer. Please try again." };
-      const status = (e as { statusCode?: number })?.statusCode;
+      const status = streamStatus ?? (e as { statusCode?: number })?.statusCode;
       if (status === 429) return { ok: false, error: "Too many requests right now — wait a moment and try again." };
-      if (status === 402) return { ok: false, error: "AI credits are used up. Add credits in workspace settings to keep using this." };
+      if (status === 402 || status === 403) return { ok: false, quota: true, error: "The AI is out of credits right now. Use Free mode instead — it's unlimited!" };
+      if (NoObjectGeneratedError.isInstance(e)) return { ok: false, error: "The AI returned an unexpected answer. Please try again." };
       console.error("mood playlist failed", e);
       return { ok: false, error: "Couldn't create the playlist right now." };
     }

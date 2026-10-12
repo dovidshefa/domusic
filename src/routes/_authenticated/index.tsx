@@ -1581,7 +1581,7 @@ function Index() {
           </div>
 
           {showDupes && <DuplicatesDialog tracks={tracks} onClose={() => setShowDupes(false)} onDelete={deleteMany} />}
-          <MoodPlaylistDialog open={showMood} onClose={() => setShowMood(false)} onCreate={createAiPlaylist} />
+          <MoodPlaylistDialog open={showMood} onClose={() => setShowMood(false)} onCreate={createAiPlaylist} tracks={tracks} />
           <UploadPanel
             items={upload.items}
             onCancel={upload.cancel}
