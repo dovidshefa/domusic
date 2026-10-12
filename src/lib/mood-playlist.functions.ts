@@ -81,12 +81,14 @@ export const generateMoodPlaylist = createServerFn({ method: "POST" })
         if (trackIds.length >= want) break;
       }
       if (trackIds.length === 0) return { ok: false, error: "No songs in your library fit that mood. Try describing it differently." };
-      return { ok: true, name: out.name.slice(0, 60) || data.prompt.slice(0, 40), description: out.description.slice(0, 200), trackIds };
+      await context.supabase.from("ai_mix_usage").insert({ user_id: context.userId });
+      const remaining = Math.max(0, AI_MIX_MONTHLY_LIMIT - used - 1);
+      return { ok: true, name: out.name.slice(0, 60) || data.prompt.slice(0, 40), description: out.description.slice(0, 200), trackIds, remaining };
     } catch (e) {
-      if (NoObjectGeneratedError.isInstance(e)) return { ok: false, error: "The AI returned an unexpected answer. Please try again." };
-      const status = (e as { statusCode?: number })?.statusCode;
+      const status = streamStatus ?? (e as { statusCode?: number })?.statusCode;
       if (status === 429) return { ok: false, error: "Too many requests right now — wait a moment and try again." };
-      if (status === 402) return { ok: false, error: "AI credits are used up. Add credits in workspace settings to keep using this." };
+      if (status === 402 || status === 403) return { ok: false, quota: true, error: "The AI is out of credits right now. Use Free mode instead — it's unlimited!" };
+      if (NoObjectGeneratedError.isInstance(e)) return { ok: false, error: "The AI returned an unexpected answer. Please try again." };
       console.error("mood playlist failed", e);
       return { ok: false, error: "Couldn't create the playlist right now." };
     }
