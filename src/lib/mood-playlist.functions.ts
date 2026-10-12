@@ -2,14 +2,35 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
+export const AI_MIX_MONTHLY_LIMIT = 3;
+
 export type MoodPlaylistResult =
-  | { ok: true; name: string; description: string; trackIds: string[] }
-  | { ok: false; error: string };
+  | { ok: true; name: string; description: string; trackIds: string[]; remaining: number }
+  | { ok: false; error: string; quota?: boolean; remaining?: number };
+
+async function usedThisMonth(supabase: any, userId: string) {
+  const start = new Date();
+  start.setUTCDate(1); start.setUTCHours(0, 0, 0, 0);
+  const { count } = await supabase
+    .from("ai_mix_usage").select("id", { count: "exact", head: true })
+    .eq("user_id", userId).gte("created_at", start.toISOString());
+  return count ?? 0;
+}
+
+export const getAiMixQuota = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const used = await usedThisMonth(context.supabase, context.userId);
+    return { used, limit: AI_MIX_MONTHLY_LIMIT, remaining: Math.max(0, AI_MIX_MONTHLY_LIMIT - used) };
+  });
 
 export const generateMoodPlaylist = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ prompt: z.string().trim().min(2).max(300), count: z.number().int().min(3).max(50) }).parse(d))
   .handler(async ({ data, context }): Promise<MoodPlaylistResult> => {
+    const used = await usedThisMonth(context.supabase, context.userId);
+    if (used >= AI_MIX_MONTHLY_LIMIT)
+      return { ok: false, quota: true, remaining: 0, error: `You've used all ${AI_MIX_MONTHLY_LIMIT} AI mixes this month. Free mode is unlimited!` };
     const { data: rows, error } = await context.supabase
       .from("tracks")
       .select("id, song, artist, album, genre, kind, liked, plays")
