@@ -54,7 +54,9 @@ export const generateMoodPlaylist = createServerFn({ method: "POST" })
       headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
     });
 
+    let streamStatus: number | undefined;
     const result = streamText({
+      onError: ({ error }) => { streamStatus = (error as { statusCode?: number })?.statusCode; },
       model: provider.responses("openai/gpt-6-astra"),
       instructions:
         "You are a music curator. Build a playlist ONLY from the listener's library catalog. " +
