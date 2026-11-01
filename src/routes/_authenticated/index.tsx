@@ -15,6 +15,8 @@ import { findDuplicateGroups } from "@/lib/duplicates";
 import { useUploadManager } from "@/lib/upload-manager";
 import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
 import { toast } from "sonner";
+import { Infinity as InfinityIcon } from "lucide-react";
+import { pickRadioTrack } from "@/lib/radio";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -402,6 +404,20 @@ function Index() {
     supabase.from("tracks").update({ plays: (tracks.find(t => t.id === id)?.plays ?? 0) + 1 }).eq("id", id).then(() => {});
   }, [tracks]);
 
+  // Infinite Radio — keeps music going after the queue ends (local, zero credits)
+  const [radioOn, setRadioOn] = useState(false);
+  useEffect(() => { try { setRadioOn(localStorage.getItem("dovid-radio") === "1"); } catch {} }, []);
+  const toggleRadio = () => setRadioOn((r) => {
+    const n = !r; try { localStorage.setItem("dovid-radio", n ? "1" : "0"); } catch {}
+    toast(n ? "∞ Infinite Radio on — music won't stop" : "Infinite Radio off");
+    return n;
+  });
+  const radioHistoryRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!currentId) return;
+    radioHistoryRef.current = [currentId, ...radioHistoryRef.current.filter((x) => x !== currentId)].slice(0, 25);
+  }, [currentId]);
+
   // Playback context — when a song is started from a playlist, only that playlist plays
   const [contextIds, setContextIds] = useState<string[] | null>(null);
   const playFromView = (id: string) => {
@@ -442,7 +458,17 @@ function Index() {
       return;
     }
     const isLast = idx === queue.length - 1;
-    if (isLast && repeatMode === "off") { setPlaying(false); return; }
+    if (isLast && repeatMode === "off") {
+      const seed = queue[idx];
+      const pick = radioOn && seed ? pickRadioTrack(seed, tracks, radioHistoryRef.current) : null;
+      if (pick) {
+        if (contextIds) setContextIds([...contextIds, pick.id]);
+        toast(`∞ Radio: ${pick.song}`);
+        playTrack(pick.id);
+        return;
+      }
+      setPlaying(false); return;
+    }
     playTrack(queue[(idx + 1) % queue.length].id);
   };
   const handlePrev = () => {
@@ -1943,6 +1969,10 @@ function Index() {
               <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Next (Shift+→)">
                 <SkipForward className="h-5 w-5" />
               </button>
+              <button data-testid="radio-btn" onClick={toggleRadio} title={radioOn ? "Infinite Radio on" : "Infinite Radio off"}
+                className={`hidden p-2 transition md:block ${radioOn ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
+                <InfinityIcon className="h-4 w-4" />
+              </button>
               <button data-testid="repeat-btn" onClick={() => setRepeatMode((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))}
                 title={repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat all" : "Repeat off"}
                 className={`relative hidden p-2 transition md:block ${repeatMode !== "off" ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
@@ -2103,6 +2133,9 @@ function Index() {
             <div className="grid grid-cols-4 gap-3">
               <button onClick={() => { setShuffle((s) => !s); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${shuffle ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
                 <Shuffle className="h-5 w-5" /><span className="text-[10px] font-semibold">Shuffle</span>
+              </button>
+              <button onClick={toggleRadio} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${radioOn ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
+                <InfinityIcon className="h-5 w-5" /><span className="text-[10px] font-semibold">Radio</span>
               </button>
               <button onClick={() => setRepeatMode((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${repeatMode !== "off" ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
                 <Repeat className="h-5 w-5" /><span className="text-[10px] font-semibold">{repeatMode === "one" ? "Repeat 1" : repeatMode === "all" ? "Repeat all" : "Repeat"}</span>
