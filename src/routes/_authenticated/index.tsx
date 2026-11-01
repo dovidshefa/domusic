@@ -402,6 +402,20 @@ function Index() {
     supabase.from("tracks").update({ plays: (tracks.find(t => t.id === id)?.plays ?? 0) + 1 }).eq("id", id).then(() => {});
   }, [tracks]);
 
+  // Infinite Radio — keeps music going after the queue ends (local, zero credits)
+  const [radioOn, setRadioOn] = useState(false);
+  useEffect(() => { try { setRadioOn(localStorage.getItem("dovid-radio") === "1"); } catch {} }, []);
+  const toggleRadio = () => setRadioOn((r) => {
+    const n = !r; try { localStorage.setItem("dovid-radio", n ? "1" : "0"); } catch {}
+    toast(n ? "∞ Infinite Radio on — music won't stop" : "Infinite Radio off");
+    return n;
+  });
+  const radioHistoryRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!currentId) return;
+    radioHistoryRef.current = [currentId, ...radioHistoryRef.current.filter((x) => x !== currentId)].slice(0, 25);
+  }, [currentId]);
+
   // Playback context — when a song is started from a playlist, only that playlist plays
   const [contextIds, setContextIds] = useState<string[] | null>(null);
   const playFromView = (id: string) => {
@@ -442,7 +456,17 @@ function Index() {
       return;
     }
     const isLast = idx === queue.length - 1;
-    if (isLast && repeatMode === "off") { setPlaying(false); return; }
+    if (isLast && repeatMode === "off") {
+      const seed = queue[idx];
+      const pick = radioOn && seed ? pickRadioTrack(seed, tracks, radioHistoryRef.current) : null;
+      if (pick) {
+        if (contextIds) setContextIds([...contextIds, pick.id]);
+        toast(`∞ Radio: ${pick.song}`);
+        playTrack(pick.id);
+        return;
+      }
+      setPlaying(false); return;
+    }
     playTrack(queue[(idx + 1) % queue.length].id);
   };
   const handlePrev = () => {
