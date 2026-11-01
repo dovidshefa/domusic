@@ -15,6 +15,13 @@
       "when": 1791801178256,
       "tag": "0001_ai_mix_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793533469117,
+      "tag": "0002_track_lyrics",
+      "breakpoints": true
     }
   ]
 }

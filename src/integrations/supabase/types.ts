@@ -143,6 +143,30 @@ export type Database = {
         }
         Relationships: []
       }
+      track_lyrics: {
+        Row: {
+          lyrics: string
+          synced: boolean
+          track_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          lyrics?: string
+          synced?: boolean
+          track_id: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          lyrics?: string
+          synced?: boolean
+          track_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracks: {
         Row: {
           album: string
