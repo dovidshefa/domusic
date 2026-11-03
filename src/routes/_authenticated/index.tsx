@@ -17,6 +17,8 @@ import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
 import { toast } from "sonner";
 import { Infinity as InfinityIcon } from "lucide-react";
 import { pickRadioTrack } from "@/lib/radio";
+import { LyricsPanel } from "@/components/LyricsPanel";
+import { Mic2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -128,6 +130,7 @@ function Index() {
   const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
   const [recent, setRecent] = useState<string[]>([]);
   const [showQueue, setShowQueue] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(false);
   const [queueIds, setQueueIds] = useState<string[]>([]);
   const [playlistQuery, setPlaylistQuery] = useState("");
   const dragIdRef = useRef<string | null>(null);
@@ -1969,6 +1972,10 @@ function Index() {
               <button onClick={handleNext} className="rounded-full p-2 text-foreground transition hover:scale-110" title="Next (Shift+→)">
                 <SkipForward className="h-5 w-5" />
               </button>
+              <button data-testid="lyrics-btn" onClick={() => current && setShowLyrics(true)} title="Lyrics"
+                className={`hidden p-2 transition md:block ${showLyrics ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
+                <Mic2 className="h-4 w-4" />
+              </button>
               <button data-testid="radio-btn" onClick={toggleRadio} title={radioOn ? "Infinite Radio on" : "Infinite Radio off"}
                 className={`hidden p-2 transition md:block ${radioOn ? "text-[var(--aurora-2)]" : "text-muted-foreground hover:text-foreground"}`}>
                 <InfinityIcon className="h-4 w-4" />
@@ -2028,6 +2035,12 @@ function Index() {
           </div>
         </footer>
       </main>
+
+      {showLyrics && current && (
+        <LyricsPanel track={{ id: current.id, song: current.song, artist: current.artist, duration: duration || current.duration }}
+          time={progress} onClose={() => setShowLyrics(false)}
+          onSeek={(t) => { setProgress(t); if (audioRef.current) audioRef.current.currentTime = t; if (videoRef.current) videoRef.current.currentTime = t; }} />
+      )}
 
       {/* Queue drawer */}
       {showQueue && (
@@ -2133,6 +2146,9 @@ function Index() {
             <div className="grid grid-cols-4 gap-3">
               <button onClick={() => { setShuffle((s) => !s); }} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${shuffle ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
                 <Shuffle className="h-5 w-5" /><span className="text-[10px] font-semibold">Shuffle</span>
+              </button>
+              <button onClick={() => current && setShowLyrics(true)} className="flex flex-col items-center gap-1 rounded-2xl border border-border p-3">
+                <Mic2 className="h-5 w-5" /><span className="text-[10px] font-semibold">Lyrics</span>
               </button>
               <button onClick={toggleRadio} className={`flex flex-col items-center gap-1 rounded-2xl border border-border p-3 ${radioOn ? "border-[var(--aurora-2)]/50 text-[var(--aurora-2)]" : ""}`}>
                 <InfinityIcon className="h-5 w-5" /><span className="text-[10px] font-semibold">Radio</span>
