@@ -99,7 +99,7 @@ function PublicCard(p: CardProps) {
           {mine && <span className="rounded-full bg-[var(--aurora-2)]/80 px-2 py-1 text-[10px] font-bold text-white backdrop-blur">Yours</span>}
         </div>
         <div className="absolute bottom-3 right-3 flex gap-1.5">
-          <button onClick={onPlay} disabled={busy}
+          <button onClick={(e) => { e.stopPropagation(); onPlay(); }} disabled={busy}
             className="bg-aurora flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl transition hover:brightness-110 disabled:opacity-50"
             title="Add to my songs and play">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="ml-0.5 h-4 w-4" />}
