@@ -80,12 +80,14 @@ export function buildSmartPlaylist(prompt: string, library: SmartTrack[], count:
   const byEnergy = [...picked].sort((a, b) => a.e - b.e);
   const up: typeof picked = [], down: typeof picked = [];
   byEnergy.forEach((x, i) => (i % 2 === 0 ? up : down).push(x));
-  const ordered = [...up, ...down.reverse()];
+  let ordered = [...up, ...down.reverse()];
+  if (seedT) ordered = [...ordered.filter((x) => x.t.id === seedT.id), ...ordered.filter((x) => x.t.id !== seedT.id)];
 
-  const label = moods[0]?.name ?? prompt.trim().replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 34);
+  const label = moods[0]?.name
+    ?? (prompt.trim() ? prompt.trim().replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 34) : seedT ? `${seedT.song.slice(0, 28)} Radio` : "Smart");
   return {
     name: `${label} Mix`,
-    description: `A free instant mix for “${prompt.trim()}”, shaped with a warm-up, peak and cool-down.`,
+    description: `A free instant mix${prompt.trim() ? ` for “${prompt.trim()}”` : seedT ? ` based on “${seedT.song}”` : ""}, shaped with a warm-up, peak and cool-down.`,
     trackIds: ordered.map((x) => x.t.id),
   };
 }
