@@ -70,10 +70,13 @@ function PublicCard(p: CardProps) {
   return (
     <article
       data-public-card={t.id}
-      onClick={selectMode ? (e) => { e.stopPropagation(); onToggleSelect?.(); } : undefined}
+      onClick={selectMode ? (e) => { e.stopPropagation(); onToggleSelect?.(); } : (e) => {
+        if ((e.target as HTMLElement).closest("button")) return;
+        if (!busy) onPlay();
+      }}
       className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-b from-card to-background transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-15px_rgba(168,85,247,0.35)] ${
         selectMode && checked ? "border-[var(--aurora-2)] ring-2 ring-[var(--aurora-2)]/40" : "border-border hover:border-[var(--aurora-2)]/30"
-      } ${selectMode ? "cursor-pointer" : ""}`}>
+      } cursor-pointer`}>
       {selectMode && (
         <button
           data-public-check={t.id}
@@ -96,7 +99,7 @@ function PublicCard(p: CardProps) {
           {mine && <span className="rounded-full bg-[var(--aurora-2)]/80 px-2 py-1 text-[10px] font-bold text-white backdrop-blur">Yours</span>}
         </div>
         <div className="absolute bottom-3 right-3 flex gap-1.5">
-          <button onClick={onPlay} disabled={busy}
+          <button onClick={(e) => { e.stopPropagation(); onPlay(); }} disabled={busy}
             className="bg-aurora flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl transition hover:brightness-110 disabled:opacity-50"
             title="Add to my songs and play">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="ml-0.5 h-4 w-4" />}

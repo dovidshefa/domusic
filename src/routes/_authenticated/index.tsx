@@ -392,10 +392,29 @@ function Index() {
 
   useEffect(() => {
     const el = isVideo ? videoRef.current : audioRef.current;
+    const other = isVideo ? audioRef.current : videoRef.current;
+    // Make sure the inactive player is fully stopped so two songs never overlap
+    if (other && other !== el && !other.paused) { other.pause(); }
     if (!el) return;
-    if (playing) el.play().catch(() => setPlaying(false));
-    else el.pause();
+    if (playing) {
+      el.play().catch((err: unknown) => {
+        // AbortError just means a newer song interrupted this one — not a real failure
+        if ((err as { name?: string })?.name === "AbortError") return;
+        setPlaying(false);
+      });
+    } else el.pause();
   }, [playing, currentId, isVideo]);
+
+  // When the track changes, stop the old sound right away
+  const prevIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevIdRef.current && prevIdRef.current !== currentId) {
+      [audioRef.current, videoRef.current].forEach((m) => {
+        if (m && m.src && !m.paused && (m === audioRef.current ? isVideo : !isVideo)) { m.pause(); }
+      });
+    }
+    prevIdRef.current = currentId;
+  }, [currentId, isVideo]);
 
   const playTrack = useCallback((id: string) => {
     setCurrentId(id);
