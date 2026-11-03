@@ -4,7 +4,8 @@ import { Sparkles, X, Loader2, Zap } from "lucide-react";
 import { generateMoodPlaylist, getAiMixQuota } from "@/lib/mood-playlist.functions";
 import { buildSmartPlaylist, type SmartTrack } from "@/lib/smart-playlist";
 
-const IDEAS = ["Late-night drive", "Gym hype", "Rainy Sunday chill", "Focus / deep work", "Shabbat dinner", "Feel-good party"];
+const IDEAS = ["שבת / Shabbat table", "קומזיץ / Kumzitz soul", "שמחה / Simcha dance", "Israeli vibes", "Late-night drive", "Gym hype", "Rainy Sunday chill", "Focus / deep work", "Feel-good party"];
+const ENERGY = ["Auto", "Calm", "Soft", "Balanced", "Upbeat", "Max hype"];
 
 export function MoodPlaylistDialog({
   open, onClose, onCreate, tracks,
@@ -22,6 +23,8 @@ export function MoodPlaylistDialog({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [offerFree, setOfferFree] = useState(false);
+  const [energy, setEnergy] = useState(0);
+  const [seedId, setSeedId] = useState("");
   const [quota, setQuota] = useState<{ remaining: number; limit: number } | null>(null);
 
   useEffect(() => {
@@ -35,15 +38,16 @@ export function MoodPlaylistDialog({
     if (tracks.length === 0) { setErr("Your library is empty — upload some songs first."); return; }
     setBusy(true); setErr(null); setOfferFree(false);
     try {
-      const r = buildSmartPlaylist(prompt, tracks, count);
+      const r = buildSmartPlaylist(prompt, tracks, count, { energy: energy || null, seedId: seedId || null });
       await onCreate(r.name, r.trackIds);
-      setPrompt(""); onClose();
+      setPrompt(""); setSeedId(""); onClose();
     } catch { setErr("Couldn't create the playlist."); } finally { setBusy(false); }
   };
 
   const run = async () => {
-    if (prompt.trim().length < 2 || busy) return;
-    if (mode === "free") return runFree();
+    if (busy) return;
+    if (mode === "free") { if (prompt.trim().length < 2 && !seedId) return; return runFree(); }
+    if (prompt.trim().length < 2) return;
     setBusy(true); setErr(null); setOfferFree(false);
     try {
       const r = await gen({ data: { prompt: prompt.trim(), count } });
@@ -100,6 +104,24 @@ export function MoodPlaylistDialog({
           Songs: <span className="w-6 font-semibold text-foreground">{count}</span>
           <input type="range" min={5} max={50} value={count} onChange={(e) => setCount(+e.target.value)} className="flex-1 accent-[var(--aurora-2)]" />
         </label>
+        {mode === "free" && (
+          <>
+            <label className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+              Energy: <span className="w-16 font-semibold text-foreground">{ENERGY[energy]}</span>
+              <input data-testid="mood-energy" type="range" min={0} max={5} value={energy} onChange={(e) => setEnergy(+e.target.value)} className="flex-1 accent-[var(--aurora-2)]" />
+            </label>
+            <label className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+              Based on a song:
+              <select data-testid="mood-seed" value={seedId} onChange={(e) => setSeedId(e.target.value)}
+                className="min-w-0 flex-1 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-xs text-foreground outline-none">
+                <option value="">None</option>
+                {[...tracks].sort((a, b) => a.song.localeCompare(b.song)).map((t) => (
+                  <option key={t.id} value={t.id}>{t.song} — {t.artist}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         {mode === "ai" && aiOut && !err && (
           <p className="mt-3 rounded-xl bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">You've used your AI mixes this month. They come back on the 1st — Free mode is always unlimited.</p>
         )}
@@ -111,7 +133,7 @@ export function MoodPlaylistDialog({
             )}
           </div>
         )}
-        <button data-testid="mood-generate" onClick={run} disabled={busy || prompt.trim().length < 2 || (mode === "ai" && aiOut)}
+        <button data-testid="mood-generate" onClick={run} disabled={busy || (prompt.trim().length < 2 && !(mode === "free" && seedId)) || (mode === "ai" && aiOut)}
           className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-aurora px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">
           {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Curating your mix…</>
             : mode === "free" ? <><Zap className="h-4 w-4" /> Create free mix</>
