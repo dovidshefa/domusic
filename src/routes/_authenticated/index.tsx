@@ -116,7 +116,7 @@ function buildImpulse(ctx: BaseAudioContext, room: RoomName): AudioBuffer {
 function Index() {
   const navigate = useNavigate();
   const [user, setUser] = useState<{ id: string; name: string; avatar: string | null; email: string } | null>(null);
-  const [tracks, setTracks] = useState<Track[]>([]);
+  const [rawTracks, setTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -164,6 +164,12 @@ function Index() {
   const [editing, setEditing] = useState<EditingTrack>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [artistAvatars, setArtistAvatars] = useState<Record<string, string>>({});
+  // Songs show their artist's picture (first artist with a picture) as artwork.
+  const tracks = useMemo(() => rawTracks.map((t) => {
+    const names = (t.artist || "").split(/\s*(?:,|;|\s+&\s+|\s+feat\.?\s+|\s+ft\.?\s+)\s*/i).map((x) => x.trim()).filter(Boolean);
+    const pic = names.map((n) => artistAvatars[n]).find(Boolean);
+    return pic ? { ...t, cover: pic } : t;
+  }), [rawTracks, artistAvatars]);
   const artistAvatarFileRef = useRef<HTMLInputElement>(null);
   const [editingArtistAvatar, setEditingArtistAvatar] = useState<string | null>(null);
   const [uploadPublic, setUploadPublic] = useState(false);
