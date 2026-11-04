@@ -812,6 +812,7 @@ function Index() {
   };
 
   const deleteArtist = (name: string) => setArtistDeleteTarget(name);
+  const artistDeleteSongs = artistDeleteTarget ? tracks.filter((t) => splitArtists(t.artist).includes(artistDeleteTarget)) : [];
 
   const performDeleteArtist = async (name: string, alsoSongsWanted: boolean) => {
     if (!user) return;
