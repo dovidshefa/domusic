@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Heart, ListMusic, Flame, Upload, Search, SkipBack, Play, Pause, SkipForward,
@@ -137,6 +138,7 @@ function Index() {
   const queueDragRef = useRef<string | null>(null);
   const playlistCoverRef = useRef<HTMLInputElement>(null);
   const [addToMenu, setAddToMenu] = useState<string | null>(null);
+  const [artistDeleteTarget, setArtistDeleteTarget] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [showDupes, setShowDupes] = useState(false);
   const [showMood, setShowMood] = useState(false);
@@ -809,13 +811,12 @@ function Index() {
     if (view.type === "artist" && view.name === oldName) setView({ type: "artist", name: newName });
   };
 
-  const deleteArtist = async (name: string) => {
+  const deleteArtist = (name: string) => setArtistDeleteTarget(name);
+
+  const performDeleteArtist = async (name: string, alsoSongsWanted: boolean) => {
     if (!user) return;
     const affected = tracks.filter((t) => splitArtists(t.artist).includes(name));
-    if (!confirm(`Delete the artist "${name}"? (${affected.length} song${affected.length !== 1 ? "s" : ""})`)) return;
-    const alsoSongs = affected.length > 0 && confirm(
-      `Also delete all ${affected.length} songs by "${name}" from your library?\n\nOK = delete the songs too\nCancel = keep the songs, just remove the artist`,
-    );
+    const alsoSongs = affected.length > 0 && alsoSongsWanted;
     if (alsoSongs) {
       const ids = affected.map((t) => t.id);
       const paths = affected.map((t) => t.storage_path).filter(Boolean) as string[];
@@ -2095,6 +2096,41 @@ function Index() {
           </div>
         </footer>
       </main>
+
+      <Dialog open={!!artistDeleteTarget} onOpenChange={(o) => { if (!o) setArtistDeleteTarget(null); }}>
+        <DialogContent data-testid="artist-delete-dialog" className="border-border bg-card/95 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Delete artist "{artistDeleteTarget}"?</DialogTitle>
+            <DialogDescription>
+              {artistDeleteSongs.length} song{artistDeleteSongs.length !== 1 ? "s" : ""} by this artist. Choose what happens to them.
+            </DialogDescription>
+          </DialogHeader>
+          {artistDeleteSongs.length > 0 && (
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-secondary/40 p-2 text-sm">
+              {artistDeleteSongs.slice(0, 30).map((t) => (
+                <div key={t.id} dir="auto" className="truncate text-muted-foreground">• {t.song}</div>
+              ))}
+              {artistDeleteSongs.length > 30 && <div className="text-xs text-muted-foreground">+{artistDeleteSongs.length - 30} more</div>}
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            {artistDeleteSongs.length > 0 && (
+              <button data-testid="artist-delete-all" onClick={() => { const n = artistDeleteTarget!; setArtistDeleteTarget(null); performDeleteArtist(n, true); }}
+                className="rounded-xl bg-destructive px-4 py-2.5 text-sm font-semibold text-destructive-foreground transition hover:opacity-90">
+                Delete artist & all {artistDeleteSongs.length} songs
+              </button>
+            )}
+            <button data-testid="artist-delete-keep" onClick={() => { const n = artistDeleteTarget!; setArtistDeleteTarget(null); performDeleteArtist(n, false); }}
+              className="rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-semibold transition hover:bg-secondary/70">
+              {artistDeleteSongs.length > 0 ? "Keep songs, remove artist only" : "Remove artist"}
+            </button>
+            <button onClick={() => setArtistDeleteTarget(null)}
+              className="rounded-xl px-4 py-2 text-sm text-muted-foreground transition hover:text-foreground">
+              Cancel
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {showLyrics && current && (
         <LyricsPanel track={{ id: current.id, song: current.song, artist: current.artist, duration: duration || current.duration }}
