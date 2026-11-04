@@ -809,6 +809,36 @@ function Index() {
     if (view.type === "artist" && view.name === oldName) setView({ type: "artist", name: newName });
   };
 
+  const deleteArtist = async (name: string) => {
+    if (!user) return;
+    const affected = tracks.filter((t) => splitArtists(t.artist).includes(name));
+    if (!confirm(`Delete the artist "${name}"? (${affected.length} song${affected.length !== 1 ? "s" : ""})`)) return;
+    const alsoSongs = affected.length > 0 && confirm(
+      `Also delete all ${affected.length} songs by "${name}" from your library?\n\nOK = delete the songs too\nCancel = keep the songs, just remove the artist`,
+    );
+    if (alsoSongs) {
+      const ids = affected.map((t) => t.id);
+      const paths = affected.map((t) => t.storage_path).filter(Boolean) as string[];
+      setTracks((ts) => ts.filter((x) => !ids.includes(x.id)));
+      setPlaylists((pls) => pls.map((p) => ({ ...p, trackIds: p.trackIds.filter((x) => !ids.includes(x)) })));
+      setRecent((r) => r.filter((x) => !ids.includes(x)));
+      if (currentId && ids.includes(currentId)) { setCurrentId(null); setPlaying(false); }
+      await supabase.from("tracks").delete().in("id", ids);
+      if (paths.length) await supabase.storage.from("media").remove(paths);
+    } else {
+      const updates = affected.map((t) => {
+        const rest = splitArtists(t.artist).filter((a) => a !== name);
+        return { id: t.id, artist: rest.length ? rest.join(", ") : "Unknown" };
+      });
+      setTracks((ts) => ts.map((x) => { const u = updates.find((y) => y.id === x.id); return u ? { ...x, artist: u.artist } : x; }));
+      await Promise.all(updates.map((u) => supabase.from("tracks").update({ artist: u.artist }).eq("id", u.id)));
+    }
+    setArtistAvatars((m) => { const { [name]: _, ...rest } = m; return rest; });
+    await supabase.from("artist_profiles").delete().eq("user_id", user.id).eq("name", name);
+    setView({ type: "library" });
+    toast.success(alsoSongs ? `Deleted ${name} and ${affected.length} songs` : `Removed artist ${name}`);
+  };
+
   const triggerArtistAvatarUpload = (artistName: string) => {
     setEditingArtistAvatar(artistName);
     artistAvatarFileRef.current?.click();
@@ -1759,6 +1789,11 @@ function Index() {
                     className="rounded-full border border-border bg-secondary/60 p-1.5 text-muted-foreground transition hover:border-[var(--aurora-2)]/40 hover:text-[var(--aurora-2)]"
                     title="Rename artist">
                     <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button data-testid="artist-delete-btn" onClick={() => deleteArtist(view.name)}
+                    className="rounded-full border border-border bg-secondary/60 p-1.5 text-muted-foreground transition hover:border-destructive/40 hover:text-destructive"
+                    title="Delete artist">
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <div className="text-xs text-muted-foreground">{filtered.length} track{filtered.length !== 1 ? "s" : ""} · separate multiple artists with commas when editing a song</div>
