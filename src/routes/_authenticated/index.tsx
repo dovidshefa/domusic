@@ -1574,16 +1574,16 @@ function Index() {
         </header>
 
         <section className="flex-1 overflow-y-auto px-5 pb-8 pt-6 md:px-8">
-          <div className="relative mb-10 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-card via-card to-background p-6 md:p-8">
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-background p-4 md:p-5">
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
-            <div className="relative flex flex-col items-start gap-6 md:flex-row md:items-center">
+            <div className="relative flex flex-col items-start gap-4 md:gap-5 md:flex-row md:items-center">
               <div ref={playerStageRef} onTouchStart={onHeroTouchStart} onTouchEnd={onHeroTouchEnd}
                 className={`relative select-none ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
                 {isVideo && current?.src ? (
                   <div className={isFullscreen
                       ? "group/vid relative h-full w-full"
-                      : "group/vid relative aspect-video w-[min(92vw,720px)] overflow-hidden rounded-2xl shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[640px] lg:w-[760px]"}
+                      : "group/vid relative aspect-video w-[min(92vw,420px)] overflow-hidden rounded-xl shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:w-[360px] lg:w-[440px]"}
                     onClick={(e) => { if ((e.target as HTMLElement).tagName === "VIDEO") setPlaying((p) => !p); }}>
                     <video ref={videoRef} src={current.src} playsInline crossOrigin="anonymous"
                       onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime)}
@@ -1613,7 +1613,7 @@ function Index() {
                   <img src={display.cover || "https://picsum.photos/seed/empty/600/600"} alt={display.song}
                     className={isFullscreen
                       ? "max-h-full max-w-full object-contain"
-                      : `h-32 w-32 rounded-2xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-40 md:w-40 ${playing ? "animate-float-cover" : ""}`} />
+                      : `h-24 w-24 rounded-xl object-cover shadow-2xl ring-1 ring-[var(--aurora-2)]/30 md:h-28 md:w-28 ${playing ? "animate-float-cover" : ""}`} />
                 )}
                 {playing && !isFullscreen && <div className="absolute -inset-2 -z-10 rounded-3xl bg-[var(--aurora-2)]/30 blur-2xl" aria-hidden />}
                 {current && (
@@ -1630,11 +1630,11 @@ function Index() {
                   <span className={`inline-block h-1.5 w-1.5 rounded-full bg-[var(--aurora-2)] ${playing ? "animate-pulse" : ""}`} />
                   NOW PLAYING
                 </div>
-                <h1 className="font-display text-4xl leading-none md:text-6xl">{display.song}</h1>
+                <h1 className="font-display line-clamp-2 text-2xl leading-tight md:text-4xl">{display.song}</h1>
                 <p className="mt-2 text-sm text-muted-foreground md:text-base">
                   {display.artist} <span className="text-foreground/30">·</span> {display.album}
                 </p>
-                <div className="mt-4 flex items-center gap-3">
+                <div className="mt-3 flex items-center gap-3">
                   <button onClick={() => setPlaying((p) => !p)} className="bg-aurora shadow-aurora flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-primary-foreground transition hover:brightness-110">
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {playing ? "Pause" : "Play"}
@@ -1654,7 +1654,7 @@ function Index() {
                   )}
                 </div>
               </div>
-              <div className="hidden h-24 items-end gap-1 md:flex">
+              <div className="hidden h-16 items-end gap-1 md:flex">
                 {Array.from({ length: 18 }).map((_, i) => (
                   <span key={i} className="bg-aurora w-1.5 rounded-full"
                     style={{
