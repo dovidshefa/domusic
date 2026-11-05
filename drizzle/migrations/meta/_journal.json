@@ -22,6 +22,13 @@
       "when": 1793533469117,
       "tag": "0002_track_lyrics",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793877942681,
+      "tag": "0003_admin_roles_uploaders",
+      "breakpoints": true
     }
   ]
 }
