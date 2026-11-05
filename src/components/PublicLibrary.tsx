@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Globe2, Play, Plus, ListPlus, Loader2, Music2, Video, Users,
-  Flame, Clock, TrendingUp, CheckSquare, Square, CheckCheck, X,
+  Flame, Clock, TrendingUp, CheckSquare, Square, CheckCheck, X, Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 export type PublicTrack = {
@@ -63,6 +64,7 @@ type CardProps = {
   selectMode?: boolean;
   checked?: boolean;
   onToggleSelect?: () => void;
+  onAdminDelete?: () => void;
 };
 
 function PublicCard(p: CardProps) {
@@ -99,6 +101,13 @@ function PublicCard(p: CardProps) {
           {mine && <span className="rounded-full bg-[var(--aurora-2)]/80 px-2 py-1 text-[10px] font-bold text-white backdrop-blur">Yours</span>}
         </div>
         <div className="absolute bottom-3 right-3 flex gap-1.5">
+          {p.onAdminDelete && !selectMode && (
+            <button data-admin-delete={t.id} onClick={(e) => { e.stopPropagation(); p.onAdminDelete?.(); }} disabled={busy}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/70 text-white backdrop-blur transition hover:bg-destructive disabled:opacity-50"
+              title="Admin: delete from community">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
           <button onClick={(e) => { e.stopPropagation(); onPlay(); }} disabled={busy}
             className="bg-aurora flex h-10 w-10 items-center justify-center rounded-full text-primary-foreground shadow-xl transition hover:brightness-110 disabled:opacity-50"
             title="Add to my songs and play">
@@ -169,6 +178,7 @@ export function PublicLibrary(props: {
   fixedKind?: "audio" | "video";
   title?: string;
   subtitle?: string;
+  isAdmin?: boolean;
 }) {
   const { myId, savedSourceIds, playlists, onAdd, onAddToPlaylist, onAddManyToPlaylist, onCreatePlaylist, fixedKind, title, subtitle } = props;
   const [search, setSearch] = useState("");
@@ -299,8 +309,25 @@ export function PublicLibrary(props: {
       onAddMine={() => void act(t.id, () => onAdd(t))}
       onAddToPlaylist={(pid) => { setMenu(null); void act(t.id, () => onAddToPlaylist(pid, t)); }}
       onCreatePlaylist={() => { setMenu(null); onCreatePlaylist(); }}
+      onAdminDelete={props.isAdmin && myId !== t.uploader_id ? () => void adminDelete(t) : undefined}
     />
   );
+
+  const adminDelete = async (t: PublicTrack) => {
+    if (!window.confirm(`Delete "${t.song}" by ${t.uploader_name} from the community? This removes it for everyone.`)) return;
+    setBusy(t.id);
+    if (t.storage_path) await supabase.storage.from("media").remove([t.storage_path]);
+    const { error, count } = await supabase.from("tracks").delete({ count: "exact" }).eq("id", t.id);
+    setBusy(null);
+    if (error || !count) { toast.error("Couldn't delete that song"); return; }
+    setRows((r) => r.filter((x) => x.id !== t.id));
+    setShelves((s) => ({
+      trending: s.trending.filter((x) => x.id !== t.id),
+      recent: s.recent.filter((x) => x.id !== t.id),
+      added: s.added.filter((x) => x.id !== t.id),
+    }));
+    toast.success(`Deleted "${t.song}"`);
+  };
 
   const shelf = (label: string, hint: string, Icon: typeof Flame, list: PublicTrack[]) =>
     list.length === 0 ? null : (

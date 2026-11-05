@@ -232,11 +232,45 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      admin_list_members: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          display_name: string
+          is_admin: boolean
+          is_uploader: boolean
+          joined_at: string
+          public_count: number
+          song_count: number
+          user_id: string
+        }[]
+      }
       browse_public_tracks: {
         Args: {
           _genre?: string
@@ -288,6 +322,13 @@ export type Database = {
           uploader_name: string
         }[]
       }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       public_track_genres: {
         Args: never
         Returns: {
@@ -297,7 +338,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "uploader"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -424,6 +465,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "uploader"],
+    },
   },
 } as const
