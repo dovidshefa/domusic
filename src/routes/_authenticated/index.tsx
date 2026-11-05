@@ -1903,6 +1903,63 @@ function Index() {
               No tracks here yet. Click "Upload Music / Video" to add some.
             </div>
           ) : (
+            <>
+            <div className="mb-3 flex justify-end">
+              <div className="flex rounded-full border border-border bg-secondary/50 p-1 text-xs">
+                <button data-testid="layout-list" onClick={() => setLayoutMode("list")} className={`flex items-center gap-1 rounded-full px-3 py-1 ${layoutMode === "list" ? "bg-aurora text-primary-foreground" : "text-muted-foreground"}`}><ListIcon className="h-3.5 w-3.5" /> List</button>
+                <button data-testid="layout-grid" onClick={() => setLayoutMode("grid")} className={`flex items-center gap-1 rounded-full px-3 py-1 ${layoutMode === "grid" ? "bg-aurora text-primary-foreground" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
+              </div>
+            </div>
+            {layoutMode === "list" ? (
+              <div className="overflow-hidden rounded-2xl border border-border bg-card/40">
+                {filtered.map((t, i) => {
+                  const active = t.id === currentId;
+                  const sel = selected.includes(t.id);
+                  return (
+                    <div key={t.id} data-track-id={t.id}
+                      onClick={() => (selectMode ? toggleSelect(t.id) : playFromView(t.id))}
+                      draggable={view.type === "playlist"}
+                      onDragStart={view.type === "playlist" ? () => { dragIdRef.current = t.id; } : undefined}
+                      onDragOver={view.type === "playlist" ? (e) => e.preventDefault() : undefined}
+                      onDrop={view.type === "playlist" ? (e) => {
+                        e.preventDefault();
+                        if (dragIdRef.current && view.type === "playlist") void reorderPlaylist(view.id, dragIdRef.current, t.id);
+                        dragIdRef.current = null;
+                      } : undefined}
+                      className={`group flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2 last:border-b-0 hover:bg-secondary/60 ${active ? "bg-secondary/70" : ""}`}>
+                      {selectMode ? (
+                        <button data-track-check={t.id} aria-pressed={sel} aria-label={sel ? `Deselect ${t.song}` : `Select ${t.song}`}
+                          onClick={(e) => { e.stopPropagation(); toggleSelect(t.id); }} className="w-6 shrink-0">
+                          {sel ? <CheckSquare className="h-4 w-4 text-[var(--aurora-2)]" /> : <Square className="h-4 w-4" />}
+                        </button>
+                      ) : (
+                        <span className="w-6 shrink-0 text-center text-xs text-muted-foreground">
+                          {active && playing ? <Pause className="mx-auto h-3.5 w-3.5 text-[var(--aurora-2)]" /> : <><span className="group-hover:hidden">{i + 1}</span><Play className="mx-auto hidden h-3.5 w-3.5 group-hover:block" /></>}
+                        </span>
+                      )}
+                      <img src={t.cover} alt={t.song} className="h-10 w-10 shrink-0 rounded-md object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <div className={`truncate text-sm font-semibold ${active ? "text-[var(--aurora-2)]" : ""}`}>{t.song}</div>
+                        <div className="truncate text-xs text-muted-foreground">{t.artist}{t.kind === "video" ? " · Video" : ""}</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); toggleLike(t.id); }} className="rounded-full p-1.5 hover:bg-secondary" title="Favorite">
+                          <Heart className={`h-3.5 w-3.5 ${t.liked ? "fill-[var(--aurora-1)] text-[var(--aurora-1)]" : "text-muted-foreground"}`} />
+                        </button>
+                        <div className="hidden items-center gap-1 group-hover:flex">
+                          <button onClick={(e) => { e.stopPropagation(); setEditing({ id: t.id, song: t.song, artist: t.artist, album: t.album }); }} className="rounded-full p-1.5 hover:bg-secondary" title="Edit info / assign artist"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={(e) => { e.stopPropagation(); toggleTrackPublic(t.id); }} className="rounded-full p-1.5 hover:bg-secondary" title={t.is_public ? "Public — click to make private" : "Private — click to share"}>
+                            {t.is_public ? <Globe2 className="h-3.5 w-3.5 text-[var(--aurora-1)]" /> : <Lock className="h-3.5 w-3.5" />}
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); if (view.type === "playlist") removeFromPlaylist(view.id, t.id); else deleteTrack(t.id); }} className="rounded-full p-1.5 hover:bg-secondary" title={view.type === "playlist" ? "Remove from playlist" : "Delete track"}><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                        <span className="w-10 text-right text-xs text-muted-foreground">{fmt(t.duration ?? 0)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
               {filtered.map((t) => {
                 const active = t.id === currentId;
