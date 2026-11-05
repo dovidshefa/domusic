@@ -16,6 +16,8 @@ import { findDuplicateGroups } from "@/lib/duplicates";
 import { useUploadManager } from "@/lib/upload-manager";
 import { PublicLibrary, type PublicTrack } from "@/components/PublicLibrary";
 import { toast } from "sonner";
+import { Shield } from "lucide-react";
+import { AdminMembersDialog } from "@/components/AdminMembersDialog";
 import { Infinity as InfinityIcon } from "lucide-react";
 import { pickRadioTrack } from "@/lib/radio";
 import { LyricsPanel } from "@/components/LyricsPanel";
@@ -117,6 +119,15 @@ function buildImpulse(ctx: BaseAudioContext, room: RoomName): AudioBuffer {
 function Index() {
   const navigate = useNavigate();
   const [user, setUser] = useState<{ id: string; name: string; avatar: string | null; email: string } | null>(null);
+  const [roles, setRoles] = useState<{ admin: boolean; uploader: boolean }>({ admin: false, uploader: false });
+  const [showAdmin, setShowAdmin] = useState(false);
+  useEffect(() => {
+    if (!user?.id) return;
+    void supabase.from("user_roles").select("role").eq("user_id", user.id).then(({ data }) => {
+      const r = (data ?? []).map((x) => x.role);
+      setRoles({ admin: r.includes("admin"), uploader: r.includes("uploader") });
+    });
+  }, [user?.id]);
   const [rawTracks, setTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -689,8 +700,16 @@ function Index() {
     const t = tracks.find((x) => x.id === id);
     if (!t) return;
     const nv = !t.is_public;
+    if (nv && !roles.admin && !roles.uploader) {
+      toast.error("Only approved uploaders can share to Public Songs & Videos. Your song stays private.");
+      return;
+    }
     setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, is_public: nv } : x)));
-    await supabase.from("tracks").update({ is_public: nv }).eq("id", id);
+    const { error } = await supabase.from("tracks").update({ is_public: nv }).eq("id", id);
+    if (error) {
+      setTracks((ts) => ts.map((x) => (x.id === id ? { ...x, is_public: !nv } : x)));
+      toast.error("Couldn't change who can see this song");
+    }
   };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1442,6 +1461,11 @@ function Index() {
               <div className="truncate text-xs font-bold">{user.name}</div>
               <div className="truncate text-[10px] text-muted-foreground">{user.email}</div>
             </div>
+            {roles.admin && (
+              <button onClick={() => setShowAdmin(true)} title="Members" data-testid="admin-btn" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-[var(--aurora-1)]">
+                <Shield className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button onClick={signOut} title="Sign out" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-secondary hover:text-[var(--aurora-1)]">
               <LogOut className="h-3.5 w-3.5" />
             </button>
@@ -1854,6 +1878,7 @@ function Index() {
               onAddToPlaylist={addPublicToPlaylist}
               onAddManyToPlaylist={addManyPublicToPlaylist}
               onCreatePlaylist={createPlaylist}
+              isAdmin={roles.admin}
               fixedKind={view.type === "public-videos" ? "video" : "audio"}
               title={view.type === "public-videos" ? "Public Videos" : "Public Songs"}
               subtitle={view.type === "public-videos"
