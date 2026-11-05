@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { Infinity as InfinityIcon } from "lucide-react";
 import { pickRadioTrack } from "@/lib/radio";
 import { LyricsPanel } from "@/components/LyricsPanel";
-import { Mic2 } from "lucide-react";
+import { Mic2, List as ListIcon } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -123,6 +123,9 @@ function Index() {
   const [playing, setPlaying] = useState(false);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>({ type: "library" });
+  const [layoutMode, setLayoutModeState] = useState<"list" | "grid">("list");
+  useEffect(() => { const v = localStorage.getItem("dovid-layout"); if (v === "grid" || v === "list") setLayoutModeState(v); }, []);
+  const setLayoutMode = (m: "list" | "grid") => { setLayoutModeState(m); localStorage.setItem("dovid-layout", m); };
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
@@ -2051,6 +2054,8 @@ function Index() {
                 );
               })}
             </div>
+            )}
+            </>
           )}
         </section>
 
