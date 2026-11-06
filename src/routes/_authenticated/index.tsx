@@ -2184,6 +2184,7 @@ function Index() {
           </div>
         </footer>
       </main>
+      {showAdmin && <AdminMembersDialog onClose={() => setShowAdmin(false)} />}
 
       <Dialog open={!!artistDeleteTarget} onOpenChange={(o) => { if (!o) setArtistDeleteTarget(null); }}>
         <DialogContent data-testid="artist-delete-dialog" className="border-border bg-card/95 backdrop-blur-xl">
