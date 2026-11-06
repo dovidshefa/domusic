@@ -22,7 +22,7 @@ import { Infinity as InfinityIcon } from "lucide-react";
 import { pickRadioTrack } from "@/lib/radio";
 import { LyricsPanel } from "@/components/LyricsPanel";
 import { Mic2, List as ListIcon } from "lucide-react";
-import { ArrowUpDown, ArrowUp as SortUpIcon, ArrowDown as SortDownIcon, Check as CheckIcon, Type as TypeIcon, User as UserIcon, CalendarClock, Flame as FlameIcon, Timer as TimerIcon, Heart as HeartIcon, Shuffle as DefaultSortIcon, X as XIcon } from "lucide-react";
+import { ArrowUpDown, ArrowUp as SortUpIcon, ArrowDown as SortDownIcon, Check as CheckIcon, Type as TypeIcon, CalendarClock, Flame as FlameIcon, Timer as TimerIcon, Heart as HeartIcon, Shuffle as DefaultSortIcon, X as XIcon } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const SORT_OPTIONS = [
