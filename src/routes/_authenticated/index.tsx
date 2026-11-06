@@ -22,6 +22,18 @@ import { Infinity as InfinityIcon } from "lucide-react";
 import { pickRadioTrack } from "@/lib/radio";
 import { LyricsPanel } from "@/components/LyricsPanel";
 import { Mic2, List as ListIcon } from "lucide-react";
+import { ArrowUpDown, ArrowUp as SortUpIcon, ArrowDown as SortDownIcon, Check as CheckIcon, Type as TypeIcon, User as UserIcon, CalendarClock, Flame as FlameIcon, Timer as TimerIcon, Heart as HeartIcon, Shuffle as DefaultSortIcon, X as XIcon } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+const SORT_OPTIONS = [
+  { key: "default", label: "Default order", icon: DefaultSortIcon, asc: "View order", desc: "View order" },
+  { key: "title", label: "Title", icon: TypeIcon, asc: "A → Z", desc: "Z → A" },
+  { key: "artist", label: "Artist", icon: UserIcon, asc: "A → Z", desc: "Z → A" },
+  { key: "added", label: "Recently added", icon: CalendarClock, asc: "Newest first", desc: "Oldest first" },
+  { key: "plays", label: "Most played", icon: FlameIcon, asc: "Most first", desc: "Least first" },
+  { key: "duration", label: "Duration", icon: TimerIcon, asc: "Longest first", desc: "Shortest first" },
+  { key: "liked", label: "Favorites first", icon: HeartIcon, asc: "Favorites on top", desc: "Favorites last" },
+] as const;
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -1956,21 +1968,52 @@ function Index() {
           ) : (
             <>
             <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-              <div className="flex items-center gap-1 rounded-full border border-border bg-secondary/50 p-1 text-xs">
-                <span className="pl-2 text-muted-foreground">Sort</span>
-                <select data-testid="sort-key" value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="rounded-full bg-transparent px-2 py-1 text-foreground outline-none">
-                  <option value="default">Default</option>
-                  <option value="title">Title</option>
-                  <option value="artist">Artist</option>
-                  <option value="added">Recently added</option>
-                  <option value="plays">Most played</option>
-                  <option value="duration">Duration</option>
-                  <option value="liked">Favorites first</option>
-                </select>
-                {sortKey !== "default" && (
-                  <button data-testid="sort-dir" onClick={toggleSortDir} title="Flip order" className="rounded-full px-2 py-1 text-foreground hover:bg-secondary">{sortDir === "asc" ? "↑" : "↓"}</button>
-                )}
-              </div>
+              {(() => {
+                const opt = SORT_OPTIONS.find((o) => o.key === sortKey) ?? SORT_OPTIONS[0];
+                const OptIcon = opt.icon;
+                const activeSort = sortKey !== "default";
+                return (
+                  <div className={`flex items-center gap-1 rounded-full border p-1 text-xs backdrop-blur-md transition-all ${activeSort ? "border-primary/50 bg-primary/10 shadow-[0_0_18px_-4px_hsl(var(--primary)/0.6)]" : "border-border bg-secondary/50"}`}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button data-testid="sort-key" className="flex items-center gap-2 rounded-full px-3 py-1 text-foreground transition-colors hover:bg-secondary">
+                          {activeSort ? <OptIcon className="h-3.5 w-3.5 text-primary" /> : <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                          <span className="text-muted-foreground">Sort:</span>
+                          <span className="font-semibold">{activeSort ? opt.label : "Default"}</span>
+                          {activeSort && <span className="hidden rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground sm:inline">{sortDir === "asc" ? opt.asc : opt.desc}</span>}
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-60 rounded-2xl border-border bg-popover/90 p-1.5 backdrop-blur-xl">
+                        <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">Sort songs by</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {SORT_OPTIONS.map((o) => {
+                          const I = o.icon; const on = o.key === sortKey;
+                          return (
+                            <DropdownMenuItem key={o.key} onSelect={() => setSortKey(o.key)} className={`flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 ${on ? "bg-primary/15 text-foreground" : ""}`}>
+                              <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${on ? "bg-aurora text-primary-foreground" : "bg-secondary text-muted-foreground"}`}><I className="h-3.5 w-3.5" /></span>
+                              <span className="flex-1">
+                                <span className="block text-sm font-medium">{o.label}</span>
+                                {o.key !== "default" && <span className="block text-[10px] text-muted-foreground">{o.asc} · {o.desc}</span>}
+                              </span>
+                              {on && <CheckIcon className="h-4 w-4 text-primary" />}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {activeSort && (
+                      <>
+                        <button data-testid="sort-dir" onClick={toggleSortDir} title={`Switch to ${sortDir === "asc" ? opt.desc : opt.asc}`} className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-foreground transition-transform hover:scale-110 hover:bg-secondary/80">
+                          {sortDir === "asc" ? <SortUpIcon className="h-3.5 w-3.5" /> : <SortDownIcon className="h-3.5 w-3.5" />}
+                        </button>
+                        <button onClick={() => setSortKey("default")} title="Clear sort" className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground">
+                          <XIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="flex rounded-full border border-border bg-secondary/50 p-1 text-xs">
                 <button data-testid="layout-list" onClick={() => setLayoutMode("list")} className={`flex items-center gap-1 rounded-full px-3 py-1 ${layoutMode === "list" ? "bg-aurora text-primary-foreground" : "text-muted-foreground"}`}><ListIcon className="h-3.5 w-3.5" /> List</button>
                 <button data-testid="layout-grid" onClick={() => setLayoutMode("grid")} className={`flex items-center gap-1 rounded-full px-3 py-1 ${layoutMode === "grid" ? "bg-aurora text-primary-foreground" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
