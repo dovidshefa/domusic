@@ -137,6 +137,15 @@ function Index() {
   const [layoutMode, setLayoutModeState] = useState<"list" | "grid">("list");
   useEffect(() => { const v = localStorage.getItem("dovid-layout"); if (v === "grid" || v === "list") setLayoutModeState(v); }, []);
   const setLayoutMode = (m: "list" | "grid") => { setLayoutModeState(m); localStorage.setItem("dovid-layout", m); };
+  const [sortKey, setSortKeyState] = useState<string>("default");
+  const [sortDir, setSortDirState] = useState<"asc" | "desc">("asc");
+  useEffect(() => { const k = localStorage.getItem("dovid-sort-key"); const d = localStorage.getItem("dovid-sort-dir"); if (k) setSortKeyState(k); if (d === "asc" || d === "desc") setSortDirState(d); }, []);
+  const setSortKey = (k: string) => {
+    setSortKeyState(k); localStorage.setItem("dovid-sort-key", k);
+    const d = ["plays", "duration", "liked", "added"].includes(k) ? "desc" : "asc";
+    setSortDirState(d); localStorage.setItem("dovid-sort-dir", d);
+  };
+  const toggleSortDir = () => { const d = sortDir === "asc" ? "desc" : "asc"; setSortDirState(d); localStorage.setItem("dovid-sort-dir", d); };
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
@@ -401,8 +410,22 @@ function Index() {
       const q = term.toLowerCase();
       list = list.filter((t) => t.song.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || t.album.toLowerCase().includes(q));
     }
+    if (sortKey !== "default") {
+      const idx = new Map(tracks.map((t, i) => [t.id, i]));
+      const dir = sortDir === "asc" ? 1 : -1;
+      const cmp: Record<string, (a: Track, b: Track) => number> = {
+        title: (a, b) => a.song.localeCompare(b.song, undefined, { sensitivity: "base" }),
+        artist: (a, b) => a.artist.localeCompare(b.artist, undefined, { sensitivity: "base" }) || a.song.localeCompare(b.song),
+        added: (a, b) => (idx.get(b.id) ?? 0) - (idx.get(a.id) ?? 0),
+        plays: (a, b) => (a.plays ?? 0) - (b.plays ?? 0),
+        duration: (a, b) => (a.duration ?? 0) - (b.duration ?? 0),
+        liked: (a, b) => Number(a.liked) - Number(b.liked),
+      };
+      const f = cmp[sortKey];
+      if (f) list = [...list].sort((a, b) => f(a, b) * dir);
+    }
     return list;
-  }, [tracks, view, recent, query, playlistQuery, activePlaylist]);
+  }, [tracks, view, recent, query, playlistQuery, activePlaylist, sortKey, sortDir]);
 
   // reset in-playlist search when switching playlists
   useEffect(() => { setPlaylistQuery(""); }, [view.type === "playlist" ? view.id : view.type]);
@@ -1932,7 +1955,22 @@ function Index() {
             </div>
           ) : (
             <>
-            <div className="mb-3 flex justify-end">
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+              <div className="flex items-center gap-1 rounded-full border border-border bg-secondary/50 p-1 text-xs">
+                <span className="pl-2 text-muted-foreground">Sort</span>
+                <select data-testid="sort-key" value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="rounded-full bg-transparent px-2 py-1 text-foreground outline-none">
+                  <option value="default">Default</option>
+                  <option value="title">Title</option>
+                  <option value="artist">Artist</option>
+                  <option value="added">Recently added</option>
+                  <option value="plays">Most played</option>
+                  <option value="duration">Duration</option>
+                  <option value="liked">Favorites first</option>
+                </select>
+                {sortKey !== "default" && (
+                  <button data-testid="sort-dir" onClick={toggleSortDir} title="Flip order" className="rounded-full px-2 py-1 text-foreground hover:bg-secondary">{sortDir === "asc" ? "↑" : "↓"}</button>
+                )}
+              </div>
               <div className="flex rounded-full border border-border bg-secondary/50 p-1 text-xs">
                 <button data-testid="layout-list" onClick={() => setLayoutMode("list")} className={`flex items-center gap-1 rounded-full px-3 py-1 ${layoutMode === "list" ? "bg-aurora text-primary-foreground" : "text-muted-foreground"}`}><ListIcon className="h-3.5 w-3.5" /> List</button>
                 <button data-testid="layout-grid" onClick={() => setLayoutMode("grid")} className={`flex items-center gap-1 rounded-full px-3 py-1 ${layoutMode === "grid" ? "bg-aurora text-primary-foreground" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
