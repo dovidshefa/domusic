@@ -1,3 +1,4 @@
+import lchaimLogo from "@/assets/lchaim-logo.png";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -1473,13 +1474,13 @@ function Index() {
       {/* Sidebar */}
       <aside className="relative z-10 hidden w-[280px] shrink-0 flex-col overflow-y-auto border-r border-border bg-panel/60 p-5 backdrop-blur-xl md:flex">
         <div className="mb-6 flex items-center gap-3">
-          <div className="bg-aurora shadow-aurora relative flex h-11 w-11 items-center justify-center rounded-xl">
-            <Disc3 className="h-6 w-6 text-primary-foreground" />
+          <div className="shadow-aurora relative h-11 w-11 rounded-xl">
+            <img src={lchaimLogo} alt="L'CHAIM BEATS logo" width={44} height={44} className="h-11 w-11 rounded-xl object-cover" />
             <span className="absolute inset-0 -z-10 animate-pulse-ring rounded-xl bg-[var(--aurora-2)]/40" />
           </div>
           <div>
             <div className="font-display text-aurora text-2xl leading-none">L'CHAIM BEATS</div>
-            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">PLAY IN LIGHT</div>
+            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">SIMCHA • BASS • SOUL</div>
           </div>
         </div>
 

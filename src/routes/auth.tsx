@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Disc3, Music2 } from "lucide-react";
+import { Music2 } from "lucide-react";
+import logo from "@/assets/lchaim-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 
@@ -47,12 +48,10 @@ function AuthPage() {
       />
       <div className="relative z-10 w-full max-w-md rounded-3xl border border-border bg-panel/70 p-8 backdrop-blur-xl shadow-2xl">
         <div className="mb-6 flex items-center gap-3">
-          <div className="bg-aurora shadow-aurora flex h-12 w-12 items-center justify-center rounded-xl">
-            <Disc3 className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <img src={logo} alt="L'CHAIM BEATS logo" width={48} height={48} className="shadow-aurora h-12 w-12 rounded-xl object-cover" />
           <div>
             <div className="font-display text-aurora text-2xl leading-none">L'CHAIM BEATS</div>
-            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">PLAY IN LIGHT</div>
+            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">SIMCHA • BASS • SOUL</div>
           </div>
         </div>
 
