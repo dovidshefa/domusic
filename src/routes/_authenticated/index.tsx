@@ -22,6 +22,7 @@ import { AdminMembersDialog } from "@/components/AdminMembersDialog";
 import { Infinity as InfinityIcon } from "lucide-react";
 import { pickRadioTrack } from "@/lib/radio";
 import { LyricsPanel } from "@/components/LyricsPanel";
+import { LiveLyricLine } from "@/components/LiveLyricLine";
 import { Mic2, List as ListIcon } from "lucide-react";
 import { ArrowUpDown, ArrowUp as SortUpIcon, ArrowDown as SortDownIcon, Check as CheckIcon, Type as TypeIcon, CalendarClock, Flame as FlameIcon, Timer as TimerIcon, Heart as HeartIcon, Shuffle as DefaultSortIcon, X as XIcon } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1697,6 +1698,7 @@ function Index() {
                 <p className="mt-2 text-sm text-muted-foreground md:text-base">
                   {display.artist} <span className="text-foreground/30">·</span> {display.album}
                 </p>
+                {current && <LiveLyricLine trackId={current.id} time={progress} reloadKey={showLyrics} onOpen={() => setShowLyrics(true)} />}
                 <div className="mt-3 flex items-center gap-3">
                   <button onClick={() => setPlaying((p) => !p)} className="bg-aurora shadow-aurora flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-primary-foreground transition hover:brightness-110">
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}

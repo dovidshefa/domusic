@@ -25,3 +25,17 @@ describe("lyrics", () => {
     expect(hasHebrew("Hello")).toBe(false);
   });
 });
+
+import { cleanTitle, cleanArtist } from "./lyrics";
+describe("cleanTitle", () => {
+  it("strips numbers, tags and artist prefix", () => {
+    expect(cleanTitle("02 Ani Yehudi", "Yaakov Shwekey")).toBe("Ani Yehudi");
+    expect(cleanTitle("Benny Friedman and Chananya Rotenberg - Mi K'amcha", "Benny Friedman")).toBe("Mi K'amcha");
+    expect(cleanTitle("Akiva - Rotze Lihyot Tov (1)", "Akiva")).toBe("Rotze Lihyot Tov");
+    expect(cleanTitle("Song (Official Video)")).toBe("Song");
+  });
+  it("skips placeholder artists", () => {
+    expect(cleanArtist("Your Upload")).toBe("");
+    expect(cleanArtist("Music Video, Baruch Levine")).toBe("Baruch Levine");
+  });
+});

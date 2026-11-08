@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Search, Pencil, Timer, Save, Loader2, Undo2, Music2 } from "lucide-react";
+import { X, Search, Globe, Pencil, Timer, Save, Loader2, Undo2, Music2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { parseLyrics, activeLineIndex, toLrc, fetchLrclib, isSynced, type LyricLine } from "@/lib/lyrics";
+import { parseLyrics, activeLineIndex, toLrc, fetchLrclib, isSynced, lyricsSearchUrl, type LyricLine } from "@/lib/lyrics";
 
 type Props = {
   track: { id: string; song: string; artist: string; duration: number | null };
@@ -146,6 +146,8 @@ export function LyricsPanel({ track, time, onSeek, onClose }: Props) {
           ) : !lines.length ? (
             <div className="space-y-3 text-muted-foreground">
               <p>No lyrics found for this song.</p>
+              <p className="text-xs">Search the web, copy the words, then tap “Add lyrics” and paste them.</p>
+              <a href={lyricsSearchUrl(track.song, track.artist)} target="_blank" rel="noreferrer" className="mr-2 inline-flex items-center gap-1 rounded-full border border-border px-5 py-2 text-sm"><Globe className="h-4 w-4" /> Search the web</a>
               <button onClick={() => { setDraft(""); setMode("edit"); }} className="bg-aurora rounded-full px-5 py-2 text-sm font-semibold text-primary-foreground">Add lyrics</button>
             </div>
           ) : (
