@@ -1,3 +1,4 @@
+import lchaimLogo from "@/assets/lchaim-logo.png";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
