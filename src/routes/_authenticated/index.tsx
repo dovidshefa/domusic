@@ -1479,7 +1479,7 @@ function Index() {
           </div>
           <div>
             <div className="font-display text-aurora text-2xl leading-none">L'CHAIM BEATS</div>
-            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">PLAY IN LIGHT</div>
+            <div className="text-[10px] tracking-[0.3em] text-muted-foreground">SIMCHA • BASS • SOUL</div>
           </div>
         </div>
 
