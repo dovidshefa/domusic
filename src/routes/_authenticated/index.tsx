@@ -1638,9 +1638,9 @@ function Index() {
         </header>
 
         <section className="flex-1 overflow-y-auto px-5 pb-8 pt-6 md:px-8">
-          <div className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-background p-4 md:p-5">
-            <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(60px) saturate(1.5)" }} aria-hidden />
-            <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" aria-hidden />
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-foreground/10 bg-card/40 p-4 shadow-[inset_0_1px_0_0_color-mix(in_oklab,var(--foreground)_6%,transparent)] backdrop-blur-xl md:p-6">
+            {current && <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `url(${display.cover})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(80px) saturate(1.3)" }} aria-hidden />}
+            <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/70 to-background/40" aria-hidden />
             <div className="relative flex flex-col items-start gap-4 md:gap-5 md:flex-row md:items-center">
               <div ref={playerStageRef} onTouchStart={onHeroTouchStart} onTouchEnd={onHeroTouchEnd}
                 className={`relative select-none ${isFullscreen ? "flex h-screen w-screen items-center justify-center bg-black" : ""}`}>
@@ -1690,13 +1690,13 @@ function Index() {
               </div>
 
               <div className="flex-1">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[var(--aurora-2)]/10 px-3 py-1 text-[10px] font-bold tracking-[0.2em] text-[var(--aurora-2)]">
-                  <span className={`inline-block h-1.5 w-1.5 rounded-full bg-[var(--aurora-2)] ${playing ? "animate-pulse" : ""}`} />
-                  NOW PLAYING
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-foreground/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.25em] text-muted-foreground">
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${playing ? "animate-pulse bg-[var(--aurora-2)]" : "bg-muted-foreground/50"}`} />
+                  {current ? "NOW PLAYING" : "READY"}
                 </div>
-                <h1 className="font-display line-clamp-2 text-2xl leading-tight md:text-4xl">{display.song}</h1>
-                <p className="mt-2 text-sm text-muted-foreground md:text-base">
-                  {display.artist} <span className="text-foreground/30">·</span> {display.album}
+                <h1 className="font-display line-clamp-2 text-2xl font-semibold leading-tight tracking-tight md:text-4xl">{current ? display.song : "Ready to play"}</h1>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {current ? <>{display.artist}{display.album ? <> <span className="text-foreground/25">·</span> {display.album}</> : null}</> : "Pick a song below or try a Mood Mix"}
                 </p>
                 {current && <LiveLyricLine trackId={current.id} time={progress} reloadKey={showLyrics} onOpen={() => setShowLyrics(true)} />}
                 <div className="mt-3 flex items-center gap-3">
@@ -1719,11 +1719,11 @@ function Index() {
                   )}
                 </div>
               </div>
-              <div className="hidden h-16 items-end gap-1 md:flex">
-                {Array.from({ length: 18 }).map((_, i) => (
-                  <span key={i} className="bg-aurora w-1.5 rounded-full"
+              <div className="hidden h-16 items-center gap-[3px] opacity-80 md:flex">
+                {Array.from({ length: 24 }).map((_, i) => (
+                  <span key={i} className="w-[3px] rounded-full bg-foreground/40"
                     style={{
-                      height: playing ? `${20 + Math.abs(Math.sin((i + 1) * 1.7) * 60) + Math.random() * 20}%` : "12%",
+                      height: playing ? `${20 + Math.abs(Math.sin((i + 1) * 0.55) * 70)}%` : "6%",
                       animation: playing ? `eq-${i % 4} ${0.6 + (i % 5) * 0.15}s ease-in-out infinite alternate` : "none",
                     }} />
                 ))}
